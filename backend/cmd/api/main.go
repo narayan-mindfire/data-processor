@@ -1,9 +1,12 @@
 package main
 
 import (
-	"fmt"
+	"github.com/narayan-mindfire/data-processor/backend/pkg/errors"
+	"github.com/narayan-mindfire/data-processor/backend/pkg/logger"
 )
 
 func main() {
-	fmt.Println("Data Processor API Server Initialized!")
+	logger.InitLogger()
+
+	logger.Log.Info("Data Processor API Server Initialized", "port", 8080)
 }
