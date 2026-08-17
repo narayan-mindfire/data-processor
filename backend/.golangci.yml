@@ -1,0 +1,12 @@
+
+run:
+  timeout: 3m
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck     # Checks for unchecked errors (e.g. ignoring a database error)
+    - gofmt        # Checks if code is formatted beautifully
+    - govet        # Official Go tool for finding suspicious constructs and bugs
+    - ineffassign  # Detects dead code (variables assigned but never used)
+    - staticcheck  # A massive suite of high-quality bug detectors
