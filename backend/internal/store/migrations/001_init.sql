@@ -1,0 +1,26 @@
+CREATE TABLE IF NOT EXISTS jobs (
+    id VARCHAR(36) PRIMARY KEY,
+    source_type VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    total_records INT DEFAULT 0,
+    processed_records INT DEFAULT 0,
+    error_count INT DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE IF NOT EXISTS job_errors (
+    id SERIAL PRIMARY KEY,
+    job_id VARCHAR(36) REFERENCES jobs(id) ON DELETE CASCADE,
+    stage VARCHAR(30) NOT NULL,
+    record_index INT NOT NULL,
+    error_message TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS job_results (
+    id SERIAL PRIMARY KEY,
+    job_id VARCHAR(36) REFERENCES jobs(id) ON DELETE CASCADE,
+    summary_json JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
