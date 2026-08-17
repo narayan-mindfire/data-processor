@@ -10,6 +10,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/narayan-mindfire/data-processor/backend/pkg/logger"
 )
+
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
@@ -35,7 +36,7 @@ func NewDB(host, port, user, password, dbname string) (*DB, error) {
 	// Verify connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if err := db.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}

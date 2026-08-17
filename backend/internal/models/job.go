@@ -16,7 +16,7 @@ const (
 // Job represents the metadata of a pipeline run
 type Job struct {
 	ID               string     `json:"id"`
-	SourceType       string     `json:"source_type"` 
+	SourceType       string     `json:"source_type"`
 	Status           string     `json:"status"`
 	TotalRecords     int        `json:"total_records"`
 	ProcessedRecords int        `json:"processed_records"`

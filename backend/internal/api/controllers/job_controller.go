@@ -1,10 +1,9 @@
-
 package controllers
 
 import (
 	"encoding/json"
-	"net/http"
 	"github.com/narayan-mindfire/data-processor/backend/internal/api/repositories"
+	"net/http"
 )
 
 // CreateJobRequest represents the payload to start a new pipeline
@@ -26,7 +25,7 @@ type ErrorResponse struct {
 func sendMockJSON(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(MockResponse{Message: message})
+	_ = json.NewEncoder(w).Encode(MockResponse{Message: message})
 }
 
 // --- API Handlers ---

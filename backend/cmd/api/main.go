@@ -1,12 +1,12 @@
 package main
 
 import (
-	"net/http"
-	"os"
 	"github.com/narayan-mindfire/data-processor/backend/internal/api/repositories"
 	"github.com/narayan-mindfire/data-processor/backend/internal/api/routes"
 	"github.com/narayan-mindfire/data-processor/backend/internal/store"
 	"github.com/narayan-mindfire/data-processor/backend/pkg/logger"
+	"net/http"
+	"os"
 )
 
 // @title Data Processor Pipeline API
@@ -34,7 +34,7 @@ func main() {
 	router := routes.RegisterRoutes(repo)
 	logger.Log.Info("Data Processor API Server Initialized", "port", 8080)
 	logger.Log.Info("Swagger Documentation available at: http://localhost:8080/api-docs/index.html")
-	
+
 	err = http.ListenAndServe(":"+getEnv("PORT", "8080"), router)
 	if err != nil {
 		logger.Log.Error("server crashed", "error", err)
