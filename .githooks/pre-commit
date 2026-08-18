@@ -1,0 +1,24 @@
+#!/bin/bash
+
+echo "Generating Swagger Documentation..."
+# Use the official Golang image to quickly install and run swag!
+docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.23-alpine sh -c "go install github.com/swaggo/swag/cmd/swag@v1.16.2 && swag init -g cmd/api/main.go"
+
+echo "Running Go Linter (golangci-lint) via Docker..."
+docker run --rm -v "$(pwd)/backend:/app" -w /app golangci/golangci-lint:v1.60.1 golangci-lint run -v
+
+if [ $? -ne 0 ]; then
+    echo "❌ Linting failed! Please fix the errors above before committing."
+    exit 1
+fi
+
+echo "Running Go Unit Tests via Docker..."
+docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.23-alpine go test ./...
+
+if [ $? -ne 0 ]; then
+    echo "❌ Tests failed! Please fix the broken tests before committing."
+    exit 1
+fi
+
+echo "✅ All Quality Gates passed! Committing..."
+exit 0
