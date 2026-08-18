@@ -4,54 +4,148 @@ A high-performance, concurrent data ingestion and processing pipeline built in G
 
 ## Features
 
-- **Concurrent Processing:** Uses Go routines and channels to process massive datasets rapidly (Fan-out/Fan-in worker pools).
-- **REST API:** Fully decoupled MVC architecture utilizing Go's native `net/http` routing.
-- **PostgreSQL Database:** Professional schema versioning using `golang-migrate/migrate` (auto-applied on startup).
-- **Pure Docker Tooling:** Run tests, linting, Swagger generation, and the entire application without installing Go locally.
+- **Concurrent Processing:** Fan-out/Fan-in worker pools using goroutines and channels to process massive datasets.
+- **REST API:** Domain-driven architecture using Go's native `net/http` with Go 1.22+ method-based routing.
+- **PostgreSQL Database:** Schema versioning with `golang-migrate` and embedded SQL migrations auto-applied on startup.
+- **Graceful Shutdown:** Signal-aware server (`SIGINT`/`SIGTERM`) with a 30-second drain window to protect in-flight pipeline jobs.
+- **Pure Docker Tooling:** Run tests, linting, Swagger generation, and the full stack without installing Go locally.
 
-## Architecture Diagram
+## Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Language | Go 1.23 |
+| HTTP Router | `net/http` (stdlib, Go 1.22+ path params) |
+| Database | PostgreSQL 16 |
+| Migrations | `golang-migrate/migrate` (embedded via `go:embed`) |
+| Logging | `log/slog` (stdlib, structured JSON) |
+| API Docs | Swagger via `swaggo/swag` |
+| Linting | `golangci-lint` (errcheck, govet, staticcheck) |
+| Containerisation | Docker multi-stage build + Docker Compose |
+
+## Architecture
 
 ```mermaid
 graph TD
-    Client((Client)) -->|HTTP Requests| API[REST API - net/http]
-    
-    subgraph "MVC Application"
-        API -->|Routes| Controller[Job Controller]
-        Controller -->|Read Status| Repo[Postgres Job Repository]
-        Controller -->|Spawn Job| Pipeline[Concurrent Pipeline Engine]
-        
-        subgraph "Pipeline Goroutines"
-            Pipeline -->|Fetch Data| Ingest[Ingestion Stage]
-            Ingest -->|Raw Records| Validate[Validation Stage]
-            Validate -->|Valid Records| Transform[Transformation Stage]
-            Transform -->|Enriched Data| Aggregation[Aggregation Stage]
+    Client((Client)) -->|HTTP| Router["net/http ServeMux"]
+
+    subgraph "Domain-Driven Application"
+        Router -->|Routes| Handler["job.Handler"]
+        Handler -->|"JobService interface"| Service["job.PipelineService"]
+        Service -->|"JobRepository interface"| Repo["job.PostgresJobRepository"]
+
+        subgraph "Pipeline Engine"
+            Service -->|Spawn| Ingest[Ingestion]
+            Ingest -->|Records| Validate[Validation]
+            Validate -->|Valid| Transform[Transformation]
+            Transform -->|Enriched| Aggregate[Aggregation]
         end
     end
-    
-    Repo -->|SQL Queries| DB[(PostgreSQL Database)]
-    Aggregation -->|Save Results| Repo
+
+    Repo -->|SQL| DB[(PostgreSQL)]
+    Aggregate -->|Save Results| Repo
 ```
+
+### Dependency Flow
+
+All dependencies point **inward** via interfaces — no layer knows about the concrete type above it:
+
+```
+main.go → server.RegisterRoutes(svc)
+              ↓
+         job.Handler (defines JobService interface)
+              ↓
+         job.PipelineService (defines JobRepository interface)
+              ↓
+         job.PostgresJobRepository (implements JobRepository)
+              ↓
+         store.DB (connection pool + migrations)
+```
+
+## Project Layout
+
+```
+backend/
+├── cmd/api/                  Application entry point and config
+│   └── main.go
+├── internal/                 Private application code (Go import boundary)
+│   ├── job/                  Domain package — handler, service, repository co-located
+│   │   ├── handler.go        HTTP handlers + JobService interface (consumer-defined)
+│   │   ├── service.go        Business logic + JobRepository interface (consumer-defined)
+│   │   └── repository.go     PostgreSQL implementation of JobRepository
+│   ├── server/               HTTP wiring
+│   │   └── routes.go         Route registration, Swagger mount
+│   ├── models/               Shared domain types
+│   │   └── job.go            Job, JobError, JobResult structs + status constants
+│   ├── pipeline/             Concurrent processing engine
+│   └── store/                Database connection and migrations
+│       ├── db.go             Connection pool setup + auto-migration
+│       └── migrations/       Embedded SQL migration files
+├── pkg/                      Reusable, importable packages
+│   ├── apperrors/            Sentinel errors + AppError struct
+│   └── logger/               Structured JSON logger factory
+├── docs/                     Auto-generated Swagger documentation
+├── Dockerfile                Multi-stage production build
+├── .golangci.yml             Linter configuration
+└── go.mod / go.sum
+```
+
+> This layout follows the [golang-standards/project-layout](https://github.com/golang-standards/project-layout) convention and uses **domain-driven packaging** — each feature area (`job/`) co-locates its handler, service, and repository rather than grouping by technical layer.
 
 ## Quick Start
 
-Because we use a Pure Docker philosophy, all you need is Docker installed on your machine.
+All you need is **Docker** installed.
 
-### 1. Start the Database & API:
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/narayan-mindfire/data-processor.git
+cd data-processor
+cp .env.example .env          # edit DB_PASSWORD for production
+```
+
+### 2. Start the stack
 
 ```bash
 docker compose up --build
 ```
 
-### 2. View Interactive API Documentation (Swagger)
+This starts PostgreSQL and the API server. Migrations run automatically on boot.
 
-Open your browser to: `http://localhost:8080/api-docs/index.html`
+### 3. Verify
 
-## Architecture Layout
+```bash
+# Health check
+curl http://localhost:8080/api/v1/pipelines
 
-This project follows strict Package-Oriented Design (MVC-style):
+# Swagger UI
+open http://localhost:8080/api-docs/index.html
+```
 
-- `cmd/api/` - The entry point and application bootstrapper.
-- `internal/api/routes/` - Domain-specific route registration.
-- `internal/api/controllers/` - HTTP request parsing, input validation, and response handling.
-- `internal/api/repositories/` - Raw SQL execution and database abstractions.
-- `internal/models/` - Core domain entities (Job, JobError, JobResult).
+## API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/pipelines` | Start a new pipeline job |
+| `GET` | `/api/v1/pipelines` | List all pipeline jobs |
+| `GET` | `/api/v1/pipelines/{id}` | Get job details by ID |
+| `GET` | `/api/v1/pipelines/{id}/progress` | Get real-time job progress |
+| `GET` | `/api/v1/pipelines/{id}/results` | Get aggregated results |
+| `GET` | `/api/v1/pipelines/{id}/errors` | Get error logs for a job |
+| `PATCH` | `/api/v1/pipelines/{id}/cancel` | Cancel a running job |
+| `DELETE` | `/api/v1/pipelines/{id}` | Delete a job and its artifacts |
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DB_PASSWORD` | **Yes** | — | PostgreSQL password (no default — app panics if unset) |
+| `DB_HOST` | No | `localhost` | Database host |
+| `DB_PORT` | No | `5432` | Database port |
+| `DB_USER` | No | `postgres` | Database user |
+| `DB_NAME` | No | `dataprocessor` | Database name |
+| `PORT` | No | `8080` | API server port |
+
+## License
+
+This project is private and proprietary.

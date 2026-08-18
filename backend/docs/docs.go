@@ -16,26 +16,7 @@ const docTemplate = `{
     "basePath": "{{.BasePath}}",
     "paths": {
         "/api/v1/pipelines": {
-            "get": {
-                "description": "Retrieves a list of all historical and running jobs",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Pipelines"
-                ],
-                "summary": "List all pipeline jobs",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.MockResponse"
-                        }
-                    }
-                }
-            },
             "post": {
-                "description": "Ingests data from the specified source URL and begins concurrent processing.",
                 "consumes": [
                     "application/json"
                 ],
@@ -53,7 +34,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/controllers.CreateJobRequest"
+                            "$ref": "#/definitions/job.CreateJobRequest"
                         }
                     }
                 ],
@@ -61,13 +42,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/controllers.MockResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.ErrorResponse"
+                            "$ref": "#/definitions/models.Job"
                         }
                     }
                 }
@@ -75,7 +50,6 @@ const docTemplate = `{
         },
         "/api/v1/pipelines/{id}": {
             "get": {
-                "description": "Fetches the metadata and status of a specific job by ID",
                 "produces": [
                     "application/json"
                 ],
@@ -86,39 +60,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Job ID (e.g. 1234-abcd)",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.MockResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "description": "Removes a job and all associated artifacts from PostgreSQL",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Pipelines"
-                ],
-                "summary": "Delete job and artifacts",
-                "parameters": [
-                    {
-                        "type": "string",
                         "description": "Job ID",
                         "name": "id",
                         "in": "path",
@@ -129,123 +70,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/controllers.MockResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/pipelines/{id}/cancel": {
-            "patch": {
-                "description": "Safely cancels an active pipeline via context cancellation",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Pipelines"
-                ],
-                "summary": "Cancel running pipeline job",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Job ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.MockResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/pipelines/{id}/errors": {
-            "get": {
-                "description": "Retrieves any failed records and error logs for a job",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Pipelines"
-                ],
-                "summary": "Get job error logs",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Job ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.MockResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/pipelines/{id}/progress": {
-            "get": {
-                "description": "Retrieves processing metrics (total vs processed records) for a running job",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Pipelines"
-                ],
-                "summary": "Get real-time job progress",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Job ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.MockResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/pipelines/{id}/results": {
-            "get": {
-                "description": "Retrieves the aggregated mathematical outputs for a completed job",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Pipelines"
-                ],
-                "summary": "Get final job results",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Job ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.MockResponse"
+                            "$ref": "#/definitions/models.Job"
                         }
                     }
                 }
@@ -253,7 +78,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "controllers.CreateJobRequest": {
+        "job.CreateJobRequest": {
             "type": "object",
             "properties": {
                 "source_type": {
@@ -271,21 +96,32 @@ const docTemplate = `{
                 }
             }
         },
-        "controllers.ErrorResponse": {
+        "models.Job": {
             "type": "object",
             "properties": {
-                "error": {
-                    "type": "string",
-                    "example": "job not found"
-                }
-            }
-        },
-        "controllers.MockResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "example": "Endpoint hit successfully"
+                "created_at": {
+                    "type": "string"
+                },
+                "error_count": {
+                    "type": "integer"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "processed_records": {
+                    "type": "integer"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "total_records": {
+                    "type": "integer"
                 }
             }
         }

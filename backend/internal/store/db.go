@@ -11,7 +11,6 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	_ "github.com/lib/pq"
-	"github.com/narayan-mindfire/data-processor/backend/pkg/logger"
 )
 
 //go:embed migrations/*.sql
@@ -48,7 +47,6 @@ func NewDB(host, port, user, password, dbname string) (*DB, error) {
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	logger.Log.Info("PostgreSQL connected and golang-migrate applied successfully")
 	return storeDB, nil
 }
 

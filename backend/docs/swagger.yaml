@@ -1,6 +1,6 @@
 basePath: /
 definitions:
-  controllers.CreateJobRequest:
+  job.CreateJobRequest:
     properties:
       source_type:
         enum:
@@ -13,17 +13,24 @@ definitions:
         example: https://covid.ourworldindata.org/data/owid-covid-data.csv
         type: string
     type: object
-  controllers.ErrorResponse:
+  models.Job:
     properties:
-      error:
-        example: job not found
+      created_at:
         type: string
-    type: object
-  controllers.MockResponse:
-    properties:
-      message:
-        example: Endpoint hit successfully
+      error_count:
+        type: integer
+      finished_at:
         type: string
+      id:
+        type: string
+      processed_records:
+        type: integer
+      source_type:
+        type: string
+      status:
+        type: string
+      total_records:
+        type: integer
     type: object
 host: localhost:8080
 info:
@@ -33,47 +40,28 @@ info:
   version: "1.0"
 paths:
   /api/v1/pipelines:
-    get:
-      description: Retrieves a list of all historical and running jobs
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/controllers.MockResponse'
-      summary: List all pipeline jobs
-      tags:
-      - Pipelines
     post:
       consumes:
       - application/json
-      description: Ingests data from the specified source URL and begins concurrent
-        processing.
       parameters:
       - description: Pipeline Configuration
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/controllers.CreateJobRequest'
+          $ref: '#/definitions/job.CreateJobRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/controllers.MockResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/controllers.ErrorResponse'
+            $ref: '#/definitions/models.Job'
       summary: Start a new pipeline job
       tags:
       - Pipelines
   /api/v1/pipelines/{id}:
-    delete:
-      description: Removes a job and all associated artifacts from PostgreSQL
+    get:
       parameters:
       - description: Job ID
         in: path
@@ -86,107 +74,8 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/controllers.MockResponse'
-      summary: Delete job and artifacts
-      tags:
-      - Pipelines
-    get:
-      description: Fetches the metadata and status of a specific job by ID
-      parameters:
-      - description: Job ID (e.g. 1234-abcd)
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/controllers.MockResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/controllers.ErrorResponse'
+            $ref: '#/definitions/models.Job'
       summary: Get pipeline job details
-      tags:
-      - Pipelines
-  /api/v1/pipelines/{id}/cancel:
-    patch:
-      description: Safely cancels an active pipeline via context cancellation
-      parameters:
-      - description: Job ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/controllers.MockResponse'
-      summary: Cancel running pipeline job
-      tags:
-      - Pipelines
-  /api/v1/pipelines/{id}/errors:
-    get:
-      description: Retrieves any failed records and error logs for a job
-      parameters:
-      - description: Job ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/controllers.MockResponse'
-      summary: Get job error logs
-      tags:
-      - Pipelines
-  /api/v1/pipelines/{id}/progress:
-    get:
-      description: Retrieves processing metrics (total vs processed records) for a
-        running job
-      parameters:
-      - description: Job ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/controllers.MockResponse'
-      summary: Get real-time job progress
-      tags:
-      - Pipelines
-  /api/v1/pipelines/{id}/results:
-    get:
-      description: Retrieves the aggregated mathematical outputs for a completed job
-      parameters:
-      - description: Job ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/controllers.MockResponse'
-      summary: Get final job results
       tags:
       - Pipelines
 swagger: "2.0"
