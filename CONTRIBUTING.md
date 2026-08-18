@@ -16,7 +16,15 @@ Run this command once after cloning the repository:
 git config core.hooksPath .githooks
 ```
 
-### 2. Manual Testing
+### 2. Managing Dependencies
+
+If you add a new library to the codebase, do not try to run `go get` locally. Instead, use our Docker toolchain to update the module cleanly:
+
+```bash
+docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.23-alpine go mod tidy
+```
+
+### 3. Manual Testing
 
 If you want to run the tests manually without committing, use our Dockerized test runner:
 
@@ -24,8 +32,8 @@ If you want to run the tests manually without committing, use our Dockerized tes
 docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.23-alpine go test ./...
 ```
 
-### 3. Architecture Rules
+### 4. Architecture Rules
 
-- Do not write SQL queries in Controllers. All database logic must live in `repositories/`.
-- Do not add business logic to Routes.
-- Always include Swagger annotations (`@Summary`, `@Tags`) when adding a new API endpoint.
+- **Database:** Do not write SQL queries in Controllers. All database logic must live in `repositories/`. Migrations must be written in `internal/store/migrations/`.
+- **API:** Do not add business logic to Routes. Always include Swagger annotations (`@Summary`, `@Tags`) when adding a new API endpoint.
+- **Concurrency:** All heavy data processing must be delegated to the `services/` layer using goroutines and channels.
