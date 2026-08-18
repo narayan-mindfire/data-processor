@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	_ "github.com/lib/pq"
 	"github.com/narayan-mindfire/data-processor/backend/pkg/logger"
 )
@@ -18,7 +21,7 @@ type DB struct {
 	*sql.DB
 }
 
-// NewDB initializes the connection pool and runs migrations
+// NewDB initializes the connection pool and runs golang-migrate
 func NewDB(host, port, user, password, dbname string) (*DB, error) {
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
@@ -28,12 +31,10 @@ func NewDB(host, port, user, password, dbname string) (*DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Connection Pool Best Practices
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(25)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	// Verify connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -43,21 +44,35 @@ func NewDB(host, port, user, password, dbname string) (*DB, error) {
 
 	storeDB := &DB{DB: db}
 
-	// Run Auto-Migrations
-	if err := storeDB.runMigrations(context.Background()); err != nil {
+	if err := storeDB.runMigrations(); err != nil {
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
-	logger.Log.Info("PostgreSQL connected and migrations applied successfully")
+
+	logger.Log.Info("PostgreSQL connected and golang-migrate applied successfully")
 	return storeDB, nil
 }
 
-// runMigrations reads the embedded SQL file and executes it
-func (db *DB) runMigrations(ctx context.Context) error {
-	sqlBytes, err := migrationFiles.ReadFile("migrations/001_init.sql")
+// runMigrations executes golang-migrate using our embedded sql files
+func (db *DB) runMigrations() error {
+	d, err := iofs.New(migrationFiles, "migrations")
 	if err != nil {
-		return fmt.Errorf("could not read migration file: %w", err)
+		return fmt.Errorf("failed to load embedded migrations: %w", err)
 	}
 
-	_, err = db.ExecContext(ctx, string(sqlBytes))
-	return err
+	driver, err := postgres.WithInstance(db.DB, &postgres.Config{})
+	if err != nil {
+		return fmt.Errorf("failed to create postgres driver: %w", err)
+	}
+
+	m, err := migrate.NewWithInstance("iofs", d, "postgres", driver)
+	if err != nil {
+		return fmt.Errorf("failed to initialize migration instance: %w", err)
+	}
+
+	err = m.Up()
+	if err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("failed to execute migrations: %w", err)
+	}
+
+	return nil
 }
