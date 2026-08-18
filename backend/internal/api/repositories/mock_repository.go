@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/narayan-mindfire/data-processor/backend/internal/models"
-	"github.com/narayan-mindfire/data-processor/backend/pkg/errors"
+	"github.com/narayan-mindfire/data-processor/backend/pkg/apperrors"
 )
 
 type MockRepository struct {

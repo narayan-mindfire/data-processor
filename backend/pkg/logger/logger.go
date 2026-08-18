@@ -5,13 +5,12 @@ import (
 	"os"
 )
 
-var Log *slog.Logger
-
-// Initialize a global structured JSON logger
-func InitLogger() {
+// New creates and returns a structured JSON logger instance
+func New() *slog.Logger {
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
-	Log = slog.New(handler)
-	slog.SetDefault(Log)
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+	return logger
 }
