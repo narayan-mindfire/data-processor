@@ -1,46 +1,42 @@
 package main
 
 import (
-	"github.com/narayan-mindfire/data-processor/backend/internal/api/repositories"
-	"github.com/narayan-mindfire/data-processor/backend/internal/api/routes"
-	"github.com/narayan-mindfire/data-processor/backend/internal/store"
-	"github.com/narayan-mindfire/data-processor/backend/pkg/logger"
+	"context"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/narayan-mindfire/data-processor/backend/internal/job"
+	"github.com/narayan-mindfire/data-processor/backend/internal/server"
+	"github.com/narayan-mindfire/data-processor/backend/internal/store"
+	"github.com/narayan-mindfire/data-processor/backend/pkg/logger"
 )
 
-// @title Data Processor Pipeline API
-// @version 1.0
-// @description High-performance concurrent data ingestion and processing pipeline.
-// @host localhost:8080
-// @BasePath /
-func main() {
-	logger.InitLogger()
-	dbHost := getEnv("DB_HOST", "localhost")
-	dbPort := getEnv("DB_PORT", "5432")
-	dbUser := getEnv("DB_USER", "postgres")
-	dbPass := getEnv("DB_PASSWORD", "postgrespassword")
-	dbName := getEnv("DB_NAME", "dataprocessor")
+type Config struct {
+	Port   string
+	DBHost string
+	DBPort string
+	DBUser string
+	DBPass string
+	DBName string
+}
 
-	db, err := store.NewDB(dbHost, dbPort, dbUser, dbPass, dbName)
-	if err != nil {
-		logger.Log.Error("failed to connect to the database", "error", err)
-		os.Exit(1)
+func loadConfig() Config {
+	dbPass := os.Getenv("DB_PASSWORD")
+	if dbPass == "" {
+		panic("CRITICAL: DB_PASSWORD environment variable is not set!")
 	}
 
-	defer db.Close()
-
-	repo := repositories.NewPostgresJobRepository(db)
-	router := routes.RegisterRoutes(repo)
-	logger.Log.Info("Data Processor API Server Initialized", "port", 8080)
-	logger.Log.Info("Swagger Documentation available at: http://localhost:8080/api-docs/index.html")
-
-	err = http.ListenAndServe(":"+getEnv("PORT", "8080"), router)
-	if err != nil {
-		logger.Log.Error("server crashed", "error", err)
+	return Config{
+		Port:   getEnv("PORT", "8080"),
+		DBHost: getEnv("DB_HOST", "localhost"),
+		DBPort: getEnv("DB_PORT", "5432"),
+		DBUser: getEnv("DB_USER", "postgres"),
+		DBPass: dbPass,
+		DBName: getEnv("DB_NAME", "dataprocessor"),
 	}
-
-	logger.Log.Info("Data Processor API Server Initialized and Database Connected", "port", 8080)
 }
 
 func getEnv(key, defaultValue string) string {
@@ -48,4 +44,55 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// @title Data Processor Pipeline API
+// @version 1.0
+// @description High-performance concurrent data ingestion and processing pipeline.
+// @host localhost:8080
+// @BasePath /
+func main() {
+	log := logger.New()
+	cfg := loadConfig()
+
+	db, err := store.NewDB(cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPass, cfg.DBName)
+	if err != nil {
+		log.Error("failed to connect to the database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+	log.Info("PostgreSQL connected and migrations applied successfully")
+
+	repo := job.NewPostgresJobRepository(db)
+	svc := job.NewPipelineService(repo)
+	router := server.RegisterRoutes(svc)
+
+	srv := &http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: router,
+	}
+
+	log.Info("Data Processor API Server Initialized", "port", cfg.Port)
+	log.Info("Swagger Documentation available at: http://localhost:8080/api-docs/index.html")
+
+	// Start server in a background goroutine so we don't block
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("server crashed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shut down the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Info("Shutting down server gracefully...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error("Server forced to shutdown", "error", err)
+	}
 }
