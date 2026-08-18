@@ -12,10 +12,12 @@ import (
 	"github.com/narayan-mindfire/data-processor/backend/pkg/apperrors"
 )
 
-// Issue 3: Service Layer Boundary. The Handler calls the Service, not the Repository directly!
+// Handler calls the Service
 type JobService interface {
 	StartPipeline(ctx context.Context, job *models.Job) error
 	GetJobByID(ctx context.Context, id string) (*models.Job, error)
+	GetJobErrors(ctx context.Context, jobID string) ([]models.JobError, error)
+	GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error)
 }
 
 type CreateJobRequest struct {
@@ -138,10 +140,22 @@ func GetJobProgressHandler(svc JobService) http.HandlerFunc {
 // @Tags Pipelines
 // @Produce json
 // @Param id path string true "Job ID"
-// @Success 200 {object} MockResponse
+// @Success 200 {array} models.JobResult
 // @Router /api/v1/pipelines/{id}/results [get]
 func GetJobResultsHandler(svc JobService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { sendMockJSON(w, "Get job results hit", http.StatusOK) }
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		results, err := svc.GetJobResults(r.Context(), id)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to fetch results"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(results)
+	}
 }
 
 // @Summary Get job error logs
@@ -149,10 +163,22 @@ func GetJobResultsHandler(svc JobService) http.HandlerFunc {
 // @Tags Pipelines
 // @Produce json
 // @Param id path string true "Job ID"
-// @Success 200 {object} MockResponse
+// @Success 200 {array} models.JobError
 // @Router /api/v1/pipelines/{id}/errors [get]
 func GetJobErrorsHandler(svc JobService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { sendMockJSON(w, "Get job errors hit", http.StatusOK) }
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		errorsList, err := svc.GetJobErrors(r.Context(), id)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to fetch errors"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(errorsList)
+	}
 }
 
 // @Summary Cancel running pipeline job
