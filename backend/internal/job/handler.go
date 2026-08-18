@@ -108,25 +108,71 @@ func GetJobHandler(svc JobService) http.HandlerFunc {
 	}
 }
 
+// @Summary List all pipeline jobs
+// @Description Retrieves a list of all historical and running jobs
+// @Tags Pipelines
+// @Produce json
+// @Success 200 {object} MockResponse
+// @Router /api/v1/pipelines [get]
 func ListJobsHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sendMockJSON(w, "List pipeline jobs endpoint hit", http.StatusOK)
 	}
 }
+
+// @Summary Get real-time job progress
+// @Description Retrieves processing metrics (total vs processed records) for a running job
+// @Tags Pipelines
+// @Produce json
+// @Param id path string true "Job ID"
+// @Success 200 {object} MockResponse
+// @Router /api/v1/pipelines/{id}/progress [get]
 func GetJobProgressHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sendMockJSON(w, "Get job progress hit for ID: "+r.PathValue("id"), http.StatusOK)
 	}
 }
+
+// @Summary Get final job results
+// @Description Retrieves the aggregated mathematical outputs for a completed job
+// @Tags Pipelines
+// @Produce json
+// @Param id path string true "Job ID"
+// @Success 200 {object} MockResponse
+// @Router /api/v1/pipelines/{id}/results [get]
 func GetJobResultsHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { sendMockJSON(w, "Get job results hit", http.StatusOK) }
 }
+
+// @Summary Get job error logs
+// @Description Retrieves any failed records and error logs for a job
+// @Tags Pipelines
+// @Produce json
+// @Param id path string true "Job ID"
+// @Success 200 {object} MockResponse
+// @Router /api/v1/pipelines/{id}/errors [get]
 func GetJobErrorsHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { sendMockJSON(w, "Get job errors hit", http.StatusOK) }
 }
+
+// @Summary Cancel running pipeline job
+// @Description Safely cancels an active pipeline via context cancellation
+// @Tags Pipelines
+// @Produce json
+// @Param id path string true "Job ID"
+// @Success 200 {object} MockResponse
+// @Router /api/v1/pipelines/{id}/cancel [patch]
 func CancelJobHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { sendMockJSON(w, "Cancel job hit", http.StatusOK) }
 }
+
+// @Summary Delete job and artifacts
+// @Description Removes a job and all associated artifacts from PostgreSQL
+// @Tags Pipelines
+// @Produce json
+// @Param id path string true "Job ID"
+// @Success 200 {object} MockResponse
+// @Router /api/v1/pipelines/{id} [delete]
 func DeleteJobHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { sendMockJSON(w, "Delete job hit", http.StatusOK) }
 }
