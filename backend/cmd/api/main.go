@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/narayan-mindfire/data-processor/backend/internal/api/repositories"
-	"github.com/narayan-mindfire/data-processor/backend/internal/api/routes"
+	"github.com/narayan-mindfire/data-processor/backend/internal/job"
+	"github.com/narayan-mindfire/data-processor/backend/internal/server"
 	"github.com/narayan-mindfire/data-processor/backend/internal/store"
 	"github.com/narayan-mindfire/data-processor/backend/pkg/logger"
 )
@@ -63,8 +63,9 @@ func main() {
 	defer db.Close()
 	log.Info("PostgreSQL connected and migrations applied successfully")
 
-	repo := repositories.NewPostgresJobRepository(db)
-	router := routes.RegisterRoutes(repo)
+	repo := job.NewPostgresJobRepository(db)
+	svc := job.NewPipelineService(repo)
+	router := server.RegisterRoutes(svc)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
