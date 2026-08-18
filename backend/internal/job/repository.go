@@ -77,3 +77,59 @@ func (r *PostgresJobRepository) UpdateJobProgress(ctx context.Context, id string
 	}
 	return nil
 }
+
+func (r *PostgresJobRepository) InsertJobError(ctx context.Context, jobError *models.JobError) error {
+	query := `INSERT INTO job_errors (job_id, stage, record_index, error_message) VALUES ($1, $2, $3, $4)`
+	_, err := r.DB.ExecContext(ctx, query, jobError.JobID, jobError.Stage, jobError.RecordIndex, jobError.ErrorMessage)
+	return err
+}
+
+func (r *PostgresJobRepository) InsertJobResult(ctx context.Context, result *models.JobResult) error {
+	query := `INSERT INTO job_results (job_id, summary_json) VALUES ($1, $2)`
+	_, err := r.DB.ExecContext(ctx, query, result.JobID, result.SummaryJSON)
+	return err
+}
+
+func (r *PostgresJobRepository) GetJobErrors(ctx context.Context, jobID string) ([]models.JobError, error) {
+	query := `SELECT id, job_id, stage, record_index, error_message, created_at FROM job_errors WHERE job_id = $1 ORDER BY created_at DESC`
+	rows, err := r.DB.QueryContext(ctx, query, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var errorsList []models.JobError
+	for rows.Next() {
+		var e models.JobError
+		if err := rows.Scan(&e.ID, &e.JobID, &e.Stage, &e.RecordIndex, &e.ErrorMessage, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		errorsList = append(errorsList, e)
+	}
+	if errorsList == nil {
+		errorsList = []models.JobError{} // Ensures it marshals to [] in JSON instead of null
+	}
+	return errorsList, nil
+}
+
+func (r *PostgresJobRepository) GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error) {
+	query := `SELECT id, job_id, summary_json, created_at FROM job_results WHERE job_id = $1 ORDER BY created_at DESC`
+	rows, err := r.DB.QueryContext(ctx, query, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []models.JobResult
+	for rows.Next() {
+		var res models.JobResult
+		if err := rows.Scan(&res.ID, &res.JobID, &res.SummaryJSON, &res.CreatedAt); err != nil {
+			return nil, err
+		}
+		results = append(results, res)
+	}
+	if results == nil {
+		results = []models.JobResult{}
+	}
+	return results, nil
+}

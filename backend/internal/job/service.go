@@ -10,6 +10,10 @@ type JobRepository interface {
 	CreateJob(ctx context.Context, job *models.Job) error
 	GetJobByID(ctx context.Context, id string) (*models.Job, error)
 	UpdateJobProgress(ctx context.Context, id string, processedRecords, errorCount int) error
+	InsertJobError(ctx context.Context, jobError *models.JobError) error
+	InsertJobResult(ctx context.Context, result *models.JobResult) error
+	GetJobErrors(ctx context.Context, jobID string) ([]models.JobError, error)
+	GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error)
 }
 
 type PipelineService struct {
@@ -31,4 +35,12 @@ func (s *PipelineService) StartPipeline(ctx context.Context, job *models.Job) er
 
 func (s *PipelineService) GetJobByID(ctx context.Context, id string) (*models.Job, error) {
 	return s.repo.GetJobByID(ctx, id)
+}
+
+func (s *PipelineService) GetJobErrors(ctx context.Context, jobID string) ([]models.JobError, error) {
+	return s.repo.GetJobErrors(ctx, jobID)
+}
+
+func (s *PipelineService) GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error) {
+	return s.repo.GetJobResults(ctx, jobID)
 }
