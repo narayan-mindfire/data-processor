@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/narayan-mindfire/data-processor/backend/internal/models"
 )
 
 func TestPipelineService_CancelJob(t *testing.T) {
@@ -35,4 +37,16 @@ func TestPipelineService_ListJobs(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unexpected error listing jobs: %v", err)
 	}
+}
+
+func TestPipelineService_PassThroughs(t *testing.T) {
+	repo := &MockJobRepository{}
+	svc := NewPipelineService(repo)
+	ctx := context.Background()
+
+	_, _ = svc.GetJobByID(ctx, "test")
+	_, _ = svc.GetJobErrors(ctx, "test")
+	_, _ = svc.GetJobResults(ctx, "test")
+	_ = svc.DeleteJob(ctx, "test")
+	_ = svc.StartPipeline(ctx, &models.Job{ID: "test-start"})
 }

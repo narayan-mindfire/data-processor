@@ -2,6 +2,9 @@ package job
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -121,5 +124,33 @@ func TestEngine_Aggregation(t *testing.T) {
 
 	if repo.results != 1 {
 		t.Errorf("Expected exactly 1 job result saved, got %d", repo.results)
+	}
+}
+
+func TestEngine_IngestJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `[{"id": 1, "name": "Alice"}]`)
+	}))
+	defer ts.Close()
+
+	job := &models.Job{ID: "test-job", Config: models.JobConfig{}}
+	engine := NewPipelineEngine(job, &MockJobRepository{})
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	source := models.SourceDef{Type: "json", URL: ts.URL}
+	go engine.ingestJSON(context.Background(), source, &wg)
+
+	wg.Wait()
+	close(engine.recordsCh)
+
+	count := 0
+	for range engine.recordsCh {
+		count++
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 record ingested from fake JSON API, got %d", count)
 	}
 }

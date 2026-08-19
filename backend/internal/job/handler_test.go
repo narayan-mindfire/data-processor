@@ -90,3 +90,33 @@ func TestCancelJobHandler(t *testing.T) {
 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
 	}
 }
+
+func TestAllHandlers(t *testing.T) {
+	svc := &MockJobService{}
+
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		method  string
+		path    string
+	}{
+		{"GetJob", GetJobHandler(svc), "GET", "/api/v1/pipelines/test-id"},
+		{"GetResults", GetJobResultsHandler(svc), "GET", "/api/v1/pipelines/test-id/results"},
+		{"GetErrors", GetJobErrorsHandler(svc), "GET", "/api/v1/pipelines/test-id/errors"},
+		{"DeleteJob", DeleteJobHandler(svc), "DELETE", "/api/v1/pipelines/test-id"},
+		{"ListJobs", ListJobsHandler(svc), "GET", "/api/v1/pipelines"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			req.SetPathValue("id", "test-id")
+			rr := httptest.NewRecorder()
+			tt.handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Errorf("%s returned wrong status code: got %v want %v", tt.name, rr.Code, http.StatusOK)
+			}
+		})
+	}
+}
