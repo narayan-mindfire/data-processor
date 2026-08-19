@@ -1,0 +1,2 @@
+ALTER TABLE jobs ADD COLUMN config JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE jobs DROP COLUMN source_type;
