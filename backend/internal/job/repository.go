@@ -161,3 +161,43 @@ func (r *PostgresJobRepository) UpdateJobStatus(ctx context.Context, id string, 
 	}
 	return nil
 }
+
+func (r *PostgresJobRepository) DeleteJob(ctx context.Context, id string) error {
+	query := `DELETE FROM jobs WHERE id = $1`
+	_, err := r.DB.ExecContext(ctx, query, id)
+	return err
+}
+
+func (r *PostgresJobRepository) ListJobs(ctx context.Context) ([]models.Job, error) {
+	query := `
+		SELECT id, config, status, total_records, processed_records, error_count, created_at, finished_at 
+		FROM jobs ORDER BY created_at DESC
+	`
+	rows, err := r.DB.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []models.Job
+	for rows.Next() {
+		var job models.Job
+		var configBytes []byte
+		var finishedAt sql.NullTime
+
+		if err := rows.Scan(&job.ID, &configBytes, &job.Status, &job.TotalRecords, &job.ProcessedRecords, &job.ErrorCount, &job.CreatedAt, &finishedAt); err != nil {
+			return nil, err
+		}
+
+		_ = json.Unmarshal(configBytes, &job.Config)
+		if finishedAt.Valid {
+			job.FinishedAt = &finishedAt.Time
+		}
+		jobs = append(jobs, job)
+	}
+
+	if jobs == nil {
+		jobs = []models.Job{}
+	}
+	return jobs, nil
+}
