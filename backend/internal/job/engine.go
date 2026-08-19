@@ -48,20 +48,15 @@ func NewPipelineEngine(job *models.Job, repo JobRepository) *PipelineEngine {
 	}
 }
 
-// Run executes the entire pipeline lifecycle
 func (e *PipelineEngine) Run(ctx context.Context) {
 	slog.Info("Starting pipeline engine", "job_id", e.job.ID)
 
-	// Update DB to RUNNING
 	_ = e.updateJobStatus(ctx, models.StatusRunning)
 
-	// 1. Start Background Side-Channel Listeners (Observability)
 	var obsWg sync.WaitGroup
-	obsWg.Add(2)
-	go e.progressTracker(ctx, &obsWg)
-	go e.errorCollector(ctx, &obsWg)
+	obsWg.Add(1)
+	go e.observabilityTracker(ctx, &obsWg)
 
-	// 2. Stage 1: Ingestion (Multi-source Fan-out)
 	var ingestWg sync.WaitGroup
 	for _, source := range e.job.Config.Sources {
 		ingestWg.Add(1)
@@ -70,17 +65,15 @@ func (e *PipelineEngine) Run(ctx context.Context) {
 		} else if source.Type == "json" {
 			go e.ingestJSON(ctx, source, &ingestWg)
 		} else {
-			ingestWg.Done() // Skip unknown sources
+			ingestWg.Done()
 		}
 	}
 
-	// Close recordsCh when all sources finish downloading/parsing
 	go func() {
 		ingestWg.Wait()
 		close(e.recordsCh)
 	}()
 
-	// 3. Stage 2: Validation (Worker Pool Fan-out)
 	var valWg sync.WaitGroup
 	numVal := e.job.Config.Concurrency.ValidationWorkers
 	if numVal <= 0 {
@@ -91,13 +84,11 @@ func (e *PipelineEngine) Run(ctx context.Context) {
 		go e.validationWorker(ctx, &valWg)
 	}
 
-	// Close validatedCh when all validators finish
 	go func() {
 		valWg.Wait()
 		close(e.validatedCh)
 	}()
 
-	// 4. Stage 3: Transformation (Worker Pool Fan-out)
 	var transWg sync.WaitGroup
 	numTrans := e.job.Config.Concurrency.TransformWorkers
 	if numTrans <= 0 {
@@ -113,10 +104,13 @@ func (e *PipelineEngine) Run(ctx context.Context) {
 		close(e.transformedCh)
 	}()
 
-	// 5. Stage 4: Aggregation (Fan-in)
 	e.aggregate(ctx)
 
-	// 6. Cleanup
+	// Wait for all worker WaitGroups to finish their shutdown sequences
+	ingestWg.Wait()
+	valWg.Wait()
+	transWg.Wait()
+
 	close(e.progressCh)
 	close(e.errorCh)
 	obsWg.Wait()
@@ -184,6 +178,11 @@ func (e *PipelineEngine) aggregate(ctx context.Context) {
 					continue
 				}
 
+				if agg.Type == "count" {
+					results[agg.OutputName]++
+					continue
+				}
+
 				var num float64
 				switch v := val.(type) {
 				case int:
@@ -197,45 +196,45 @@ func (e *PipelineEngine) aggregate(ctx context.Context) {
 				if agg.Type == "sum" || agg.Type == "average" {
 					results[agg.OutputName] += num
 					counts[agg.OutputName]++
-				} else if agg.Type == "count" {
-					results[agg.OutputName]++
 				}
 			}
 		}
 	}
 }
 
-func (e *PipelineEngine) progressTracker(ctx context.Context, wg *sync.WaitGroup) {
+func (e *PipelineEngine) observabilityTracker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
-
-	processed := 0
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+
+	processed := 0
+	errors := 0
 
 	for {
 		select {
 		case _, ok := <-e.progressCh:
 			if !ok {
-				// Channel closed by orchestrator. Final flush before shutting down.
-				_ = e.repo.UpdateJobProgress(context.Background(), e.job.ID, processed, 0)
-				return
+				e.progressCh = nil
+			} else {
+				processed++
 			}
-			processed++
+		case jobErr, ok := <-e.errorCh:
+			if !ok {
+				e.errorCh = nil
+			} else {
+				errors++
+				slog.Error("Pipeline Error Occurred", "stage", jobErr.Stage, "msg", jobErr.ErrorMessage)
+				if err := e.repo.InsertJobError(context.Background(), jobErr); err != nil {
+					slog.Error("Failed to persist job error", "error", err)
+				}
+			}
 		case <-ticker.C:
-			// Flush to database periodically
-			_ = e.repo.UpdateJobProgress(context.Background(), e.job.ID, processed, 0)
+			_ = e.repo.UpdateJobProgress(context.Background(), e.job.ID, processed, errors)
 		}
-	}
-}
 
-func (e *PipelineEngine) errorCollector(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	for jobErr := range e.errorCh {
-		slog.Error("Pipeline Error Occurred", "stage", jobErr.Stage, "msg", jobErr.ErrorMessage)
-
-		if err := e.repo.InsertJobError(context.Background(), jobErr); err != nil {
-			slog.Error("Failed to persist job error", "error", err)
+		if e.progressCh == nil && e.errorCh == nil {
+			_ = e.repo.UpdateJobProgress(context.Background(), e.job.ID, processed, errors)
+			return
 		}
 	}
 }
@@ -263,6 +262,8 @@ func (e *PipelineEngine) ingestCSV(ctx context.Context, source models.SourceDef,
 	}
 
 	reader := csv.NewReader(resp.Body)
+	reader.LazyQuotes = true       // Ignore missing/malformed quotes
+	reader.TrimLeadingSpace = true // Ignore spaces after commas
 	headers, err := reader.Read()
 	if err != nil {
 		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-CSV", ErrorMessage: "Failed to read CSV headers: " + err.Error()}
@@ -328,13 +329,43 @@ func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef
 		return
 	}
 
-	var rawData []map[string]any
+	var rawData interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&rawData); err != nil {
-		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-JSON", ErrorMessage: "Failed to decode JSON array: " + err.Error()}
+		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-JSON", ErrorMessage: "Failed to decode JSON: " + err.Error()}
 		return
 	}
 
-	for i, data := range rawData {
+	var records []map[string]any
+
+	switch v := rawData.(type) {
+	case []interface{}:
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				records = append(records, m)
+			}
+		}
+	case map[string]interface{}:
+		if source.JSONArrayPath != "" && source.JSONArrayPath != "$" {
+			if nested, ok := v[source.JSONArrayPath]; ok {
+				if nestedArr, ok := nested.([]interface{}); ok {
+					for _, item := range nestedArr {
+						if m, ok := item.(map[string]interface{}); ok {
+							records = append(records, m)
+						}
+					}
+				} else if m, ok := nested.(map[string]interface{}); ok {
+					records = append(records, m)
+				}
+			}
+		} else {
+			records = append(records, v)
+		}
+	default:
+		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-JSON", ErrorMessage: "Unsupported JSON root type"}
+		return
+	}
+
+	for i, data := range records {
 		select {
 		case <-ctx.Done():
 			slog.Info("JSON Ingestion cancelled", "url", source.URL)
@@ -348,7 +379,7 @@ func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef
 			Data:      data,
 		}
 	}
-	slog.Info("Finished JSON ingestion", "url", source.URL, "records_read", len(rawData))
+	slog.Info("Finished JSON ingestion", "url", source.URL, "records_read", len(records))
 }
 
 func (e *PipelineEngine) validationWorker(ctx context.Context, wg *sync.WaitGroup) {
