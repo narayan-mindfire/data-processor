@@ -2,7 +2,12 @@ package job
 
 import (
 	"context"
+	"encoding/csv"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
@@ -140,10 +145,113 @@ func (e *PipelineEngine) errorCollector(ctx context.Context, wg *sync.WaitGroup)
 
 func (e *PipelineEngine) ingestCSV(ctx context.Context, source models.SourceDef, wg *sync.WaitGroup) {
 	defer wg.Done()
+	slog.Info("Starting CSV ingestion", "url", source.URL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
+	if err != nil {
+		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-CSV", ErrorMessage: "Failed to create request: " + err.Error()}
+		return
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-CSV", ErrorMessage: "HTTP request failed: " + err.Error()}
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-CSV", ErrorMessage: fmt.Sprintf("Bad HTTP status: %d", resp.StatusCode)}
+		return
+	}
+
+	reader := csv.NewReader(resp.Body)
+	headers, err := reader.Read()
+	if err != nil {
+		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-CSV", ErrorMessage: "Failed to read CSV headers: " + err.Error()}
+		return
+	}
+
+	recordIndex := 0
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("CSV Ingestion cancelled", "url", source.URL)
+			return
+		default:
+		}
+
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-CSV", RecordIndex: recordIndex, ErrorMessage: "Failed to read CSV row: " + err.Error()}
+			continue
+		}
+
+		// Convert CSV string row into a generic map based on headers!
+		data := make(map[string]any)
+		for i, value := range row {
+			if i < len(headers) {
+				data[headers[i]] = value
+			}
+		}
+
+		// Send it down the pipe!
+		e.recordsCh <- &PipelineRecord{
+			Index:     recordIndex,
+			SourceURL: source.URL,
+			Data:      data,
+		}
+		recordIndex++
+	}
+	slog.Info("Finished CSV ingestion", "url", source.URL, "records_read", recordIndex)
 }
 
 func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef, wg *sync.WaitGroup) {
 	defer wg.Done()
+	slog.Info("Starting JSON ingestion", "url", source.URL)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
+	if err != nil {
+		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-JSON", ErrorMessage: "Failed to create request: " + err.Error()}
+		return
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-JSON", ErrorMessage: "HTTP request failed: " + err.Error()}
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-JSON", ErrorMessage: fmt.Sprintf("Bad HTTP status: %d", resp.StatusCode)}
+		return
+	}
+
+	var rawData []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&rawData); err != nil {
+		e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Ingest-JSON", ErrorMessage: "Failed to decode JSON array: " + err.Error()}
+		return
+	}
+
+	for i, data := range rawData {
+		select {
+		case <-ctx.Done():
+			slog.Info("JSON Ingestion cancelled", "url", source.URL)
+			return
+		default:
+		}
+
+		e.recordsCh <- &PipelineRecord{
+			Index:     i,
+			SourceURL: source.URL,
+			Data:      data,
+		}
+	}
+	slog.Info("Finished JSON ingestion", "url", source.URL, "records_read", len(rawData))
 }
 
 func (e *PipelineEngine) validationWorker(ctx context.Context, wg *sync.WaitGroup) {
