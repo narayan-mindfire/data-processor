@@ -135,12 +135,109 @@ func (e *PipelineEngine) updateJobStatus(ctx context.Context, status string) err
 	return e.repo.UpdateJobStatus(ctx, e.job.ID, status, finishedAt)
 }
 
+func (e *PipelineEngine) aggregate(ctx context.Context) {
+	slog.Info("Starting Aggregation Fan-In stage", "job_id", e.job.ID)
+
+	results := make(map[string]float64)
+	counts := make(map[string]int)
+
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("Aggregation cancelled by user", "job_id", e.job.ID)
+			return
+		case record, ok := <-e.transformedCh:
+			if !ok {
+
+				for _, agg := range e.job.Config.Aggregations {
+					if agg.Type == "average" {
+						if counts[agg.OutputName] > 0 {
+							results[agg.OutputName] = results[agg.OutputName] / float64(counts[agg.OutputName])
+						}
+					}
+				}
+
+				summaryBytes, err := json.Marshal(results)
+				if err != nil {
+					e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Aggregation", ErrorMessage: "Failed to marshal results: " + err.Error()}
+					return
+				}
+
+				jobResult := &models.JobResult{
+					JobID:       e.job.ID,
+					SummaryJSON: string(summaryBytes),
+				}
+
+				if err := e.repo.InsertJobResult(context.Background(), jobResult); err != nil {
+					slog.Error("Failed to save final results to DB", "error", err)
+				}
+
+				slog.Info("Aggregation complete! Final Results Saved", "job_id", e.job.ID, "results", string(summaryBytes))
+				return
+			}
+
+			e.progressCh <- 1
+
+			for _, agg := range e.job.Config.Aggregations {
+				val, exists := record.Data[agg.Field]
+				if !exists || val == nil {
+					continue
+				}
+
+				var num float64
+				switch v := val.(type) {
+				case int:
+					num = float64(v)
+				case float64:
+					num = v
+				default:
+					continue
+				}
+
+				if agg.Type == "sum" || agg.Type == "average" {
+					results[agg.OutputName] += num
+					counts[agg.OutputName]++
+				} else if agg.Type == "count" {
+					results[agg.OutputName]++
+				}
+			}
+		}
+	}
+}
+
 func (e *PipelineEngine) progressTracker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
+
+	processed := 0
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case _, ok := <-e.progressCh:
+			if !ok {
+				// Channel closed by orchestrator. Final flush before shutting down.
+				_ = e.repo.UpdateJobProgress(context.Background(), e.job.ID, processed, 0)
+				return
+			}
+			processed++
+		case <-ticker.C:
+			// Flush to database periodically
+			_ = e.repo.UpdateJobProgress(context.Background(), e.job.ID, processed, 0)
+		}
+	}
 }
 
 func (e *PipelineEngine) errorCollector(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
+
+	for jobErr := range e.errorCh {
+		slog.Error("Pipeline Error Occurred", "stage", jobErr.Stage, "msg", jobErr.ErrorMessage)
+
+		if err := e.repo.InsertJobError(context.Background(), jobErr); err != nil {
+			slog.Error("Failed to persist job error", "error", err)
+		}
+	}
 }
 
 func (e *PipelineEngine) ingestCSV(ctx context.Context, source models.SourceDef, wg *sync.WaitGroup) {
@@ -354,7 +451,4 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 			e.transformedCh <- record
 		}
 	}
-}
-
-func (e *PipelineEngine) aggregate(ctx context.Context) {
 }
