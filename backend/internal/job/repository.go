@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	"github.com/narayan-mindfire/data-processor/backend/internal/models"
@@ -20,10 +21,15 @@ func NewPostgresJobRepository(db *store.DB) *PostgresJobRepository {
 
 func (r *PostgresJobRepository) CreateJob(ctx context.Context, job *models.Job) error {
 	query := `
-		INSERT INTO jobs (id, source_type, status, created_at) 
+		INSERT INTO jobs (id, config, status, created_at) 
 		VALUES ($1, $2, $3, $4)
 	`
-	_, err := r.DB.ExecContext(ctx, query, job.ID, job.SourceType, job.Status, job.CreatedAt)
+	configBytes, err := json.Marshal(job.Config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal job config: %w", err)
+	}
+
+	_, err = r.DB.ExecContext(ctx, query, job.ID, configBytes, job.Status, job.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to insert job: %w", err)
 	}
@@ -32,17 +38,17 @@ func (r *PostgresJobRepository) CreateJob(ctx context.Context, job *models.Job) 
 
 func (r *PostgresJobRepository) GetJobByID(ctx context.Context, id string) (*models.Job, error) {
 	query := `
-		SELECT id, source_type, status, total_records, processed_records, error_count, created_at, finished_at 
+		SELECT id, config, status, total_records, processed_records, error_count, created_at, finished_at 
 		FROM jobs 
 		WHERE id = $1
 	`
-
 	var job models.Job
+	var configBytes []byte
 	var finishedAt sql.NullTime
 
 	err := r.DB.QueryRowContext(ctx, query, id).Scan(
 		&job.ID,
-		&job.SourceType,
+		&configBytes,
 		&job.Status,
 		&job.TotalRecords,
 		&job.ProcessedRecords,
@@ -56,6 +62,10 @@ func (r *PostgresJobRepository) GetJobByID(ctx context.Context, id string) (*mod
 			return nil, apperrors.ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to fetch job: %w", err)
+	}
+
+	if err := json.Unmarshal(configBytes, &job.Config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal job config: %w", err)
 	}
 
 	if finishedAt.Valid {
@@ -107,7 +117,7 @@ func (r *PostgresJobRepository) GetJobErrors(ctx context.Context, jobID string) 
 		errorsList = append(errorsList, e)
 	}
 	if errorsList == nil {
-		errorsList = []models.JobError{} // Ensures it marshals to [] in JSON instead of null
+		errorsList = []models.JobError{}
 	}
 	return errorsList, nil
 }
