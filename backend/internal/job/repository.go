@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/narayan-mindfire/data-processor/backend/internal/models"
 	"github.com/narayan-mindfire/data-processor/backend/internal/store"
@@ -142,4 +143,21 @@ func (r *PostgresJobRepository) GetJobResults(ctx context.Context, jobID string)
 		results = []models.JobResult{}
 	}
 	return results, nil
+}
+
+func (r *PostgresJobRepository) UpdateJobStatus(ctx context.Context, id string, status string, finishedAt *time.Time) error {
+	var query string
+	var err error
+	if finishedAt != nil {
+		query = `UPDATE jobs SET status = $2, finished_at = $3 WHERE id = $1`
+		_, err = r.DB.ExecContext(ctx, query, id, status, finishedAt)
+	} else {
+		query = `UPDATE jobs SET status = $2 WHERE id = $1`
+		_, err = r.DB.ExecContext(ctx, query, id, status)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to update job status: %w", err)
+	}
+	return nil
 }
