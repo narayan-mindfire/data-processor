@@ -8,6 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -133,8 +135,6 @@ func (e *PipelineEngine) updateJobStatus(ctx context.Context, status string) err
 	return e.repo.UpdateJobStatus(ctx, e.job.ID, status, finishedAt)
 }
 
-// --- STUBS FOR COMPILATION (We will build these next!) ---
-
 func (e *PipelineEngine) progressTracker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 }
@@ -256,10 +256,104 @@ func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef
 
 func (e *PipelineEngine) validationWorker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return // Job cancelled
+		case record, ok := <-e.recordsCh:
+			if !ok {
+				return // No more records to validate
+			}
+
+			isValid := true
+			for _, rule := range e.job.Config.Validations {
+				val, exists := record.Data[rule.Field]
+
+				if !exists || val == nil {
+					if rule.Rule == "not_empty" {
+						e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Validation", RecordIndex: record.Index, ErrorMessage: fmt.Sprintf("Missing required field: %s", rule.Field)}
+						isValid = false
+						break
+					}
+					continue
+				}
+
+				strVal := fmt.Sprintf("%v", val)
+
+				if rule.Rule == "not_empty" && strings.TrimSpace(strVal) == "" {
+					e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Validation", RecordIndex: record.Index, ErrorMessage: fmt.Sprintf("Field %s cannot be empty", rule.Field)}
+					isValid = false
+					break
+				}
+
+				if rule.Rule == "is_numeric" {
+					if _, err := strconv.ParseFloat(strings.TrimSpace(strVal), 64); err != nil {
+						e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Validation", RecordIndex: record.Index, ErrorMessage: fmt.Sprintf("Field %s must be numeric, got: '%s'", rule.Field, strVal)}
+						isValid = false
+						break
+					}
+				}
+			}
+
+			if isValid {
+				e.validatedCh <- record
+			}
+		}
+	}
 }
 
 func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case record, ok := <-e.validatedCh:
+			if !ok {
+				return
+			}
+
+			for _, rule := range e.job.Config.Transformations {
+				val, exists := record.Data[rule.Field]
+
+				strVal := ""
+				if exists && val != nil {
+					strVal = strings.TrimSpace(fmt.Sprintf("%v", val))
+				}
+
+				if rule.Action == "fill_empty" {
+					if strVal == "" {
+						record.Data[rule.Field] = rule.DefaultValue
+						strVal = rule.DefaultValue
+					}
+				}
+
+				if rule.Action == "convert_to_int" {
+					if strVal != "" {
+						if intVal, err := strconv.Atoi(strVal); err == nil {
+							record.Data[rule.Field] = intVal
+						} else {
+							e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Transformation", RecordIndex: record.Index, ErrorMessage: fmt.Sprintf("Failed to convert %s to int", rule.Field)}
+						}
+					}
+				}
+
+				if rule.Action == "convert_to_float" {
+					if strVal != "" {
+						if floatVal, err := strconv.ParseFloat(strVal, 64); err == nil {
+							record.Data[rule.Field] = floatVal
+						} else {
+							e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Transformation", RecordIndex: record.Index, ErrorMessage: fmt.Sprintf("Failed to convert %s to float", rule.Field)}
+						}
+					}
+				}
+			}
+
+			e.transformedCh <- record
+		}
+	}
 }
 
 func (e *PipelineEngine) aggregate(ctx context.Context) {
