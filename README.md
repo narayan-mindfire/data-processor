@@ -135,6 +135,69 @@ open http://localhost:8080/api-docs/index.html
 | `PATCH` | `/api/v1/pipelines/{id}/cancel` | Cancel a running job |
 | `DELETE` | `/api/v1/pipelines/{id}` | Delete a job and its artifacts |
 
+## Sample Test Payload
+
+Because this pipeline is heavily concurrent and supports dynamic data-source combinations, you can test its full capabilities using a single request. 
+
+The following payload instructs the pipeline to simultaneously:
+1. Fetch 200 CSV records and average their weights.
+2. Fetch 100 JSONPlaceholder posts and count their IDs.
+3. Fetch a nested `results` array of 10 users from RandomUser API and count their genders.
+4. Fetch live Cryptocurrency market data and calculate a massive price sum.
+5. Fetch Open-Meteo weather data and parse the top-level object to extract elevation.
+
+You can paste this exact payload directly into the Swagger UI (`http://localhost:8080/swagger/index.html`) under the `POST /api/v1/pipelines` endpoint:
+
+```json
+{
+  "sources": [
+    {
+      "type": "csv",
+      "url": "https://people.sc.fsu.edu/~jburkardt/data/csv/hw_200.csv"
+    },
+    {
+      "type": "json",
+      "url": "https://jsonplaceholder.typicode.com/posts"
+    },
+    {
+      "type": "json",
+      "url": "https://randomuser.me/api/?results=10",
+      "json_array_path": "results"
+    },
+    {
+      "type": "json",
+      "url": "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd"
+    },
+    {
+      "type": "json",
+      "url": "https://api.open-meteo.com/v1/forecast?latitude=20&longitude=85&current_weather=true"
+    }
+  ],
+  "validations": [
+    {"field": "Weight(Pounds)", "rule": "not_empty"},
+    {"field": "gender", "rule": "not_empty"},
+    {"field": "current_price", "rule": "not_empty"},
+    {"field": "elevation", "rule": "not_empty"}
+  ],
+  "transformations": [
+    {"field": "Weight(Pounds)", "action": "convert_to_float"},
+    {"field": "current_price", "action": "convert_to_float"},
+    {"field": "elevation", "action": "convert_to_float"}
+  ],
+  "aggregations": [
+    {"type": "average", "field": "Weight(Pounds)", "output_name": "average_weight"},
+    {"type": "count", "field": "id", "output_name": "total_json_posts"},
+    {"type": "count", "field": "gender", "output_name": "total_random_users"},
+    {"type": "sum", "field": "current_price", "output_name": "sum_crypto_prices"},
+    {"type": "sum", "field": "elevation", "output_name": "total_elevation"}
+  ],
+  "concurrency": {
+    "validation_workers": 10,
+    "transform_workers": 10
+  }
+}
+```
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |

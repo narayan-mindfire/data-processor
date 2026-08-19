@@ -12,17 +12,14 @@ import (
 	"github.com/narayan-mindfire/data-processor/backend/pkg/apperrors"
 )
 
-// Handler calls the Service
 type JobService interface {
 	StartPipeline(ctx context.Context, job *models.Job) error
 	GetJobByID(ctx context.Context, id string) (*models.Job, error)
 	GetJobErrors(ctx context.Context, jobID string) ([]models.JobError, error)
 	GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error)
-}
-
-type CreateJobRequest struct {
-	SourceType string `json:"source_type" example:"csv" enums:"csv,json,mixed"`
-	SourceURL  string `json:"source_url" example:"https://covid.ourworldindata.org/data/owid-covid-data.csv"`
+	CancelJob(ctx context.Context, id string) error
+	DeleteJob(ctx context.Context, id string) error
+	ListJobs(ctx context.Context) ([]models.Job, error)
 }
 
 type MockResponse struct {
@@ -31,6 +28,16 @@ type MockResponse struct {
 
 type ErrorResponse struct {
 	Error string `json:"error" example:"job not found"`
+}
+
+// ProgressResponse defines the structured output required by the assignment
+type ProgressResponse struct {
+	Status           string     `json:"status"`
+	PercentComplete  float64    `json:"percent_complete"`
+	ProcessedRecords int        `json:"processed_records"`
+	ErrorCount       int        `json:"error_count"`
+	StartTime        time.Time  `json:"start_time"`
+	EndTime          *time.Time `json:"end_time,omitempty"`
 }
 
 func sendMockJSON(w http.ResponseWriter, message string, statusCode int) {
@@ -51,23 +58,23 @@ func generateUUID() string {
 // @Tags Pipelines
 // @Accept json
 // @Produce json
-// @Param request body CreateJobRequest true "Pipeline Configuration"
+// @Param request body models.JobConfig true "Pipeline Configuration"
 // @Success 201 {object} models.Job
 // @Router /api/v1/pipelines [post]
 func CreateJobHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req CreateJobRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var config models.JobConfig
+		if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid JSON body"})
 			return
 		}
 
 		job := &models.Job{
-			ID:         generateUUID(),
-			SourceType: req.SourceType,
-			Status:     models.StatusPending,
-			CreatedAt:  time.Now(),
+			ID:        generateUUID(),
+			Config:    config,
+			Status:    models.StatusPending,
+			CreatedAt: time.Now(),
 		}
 
 		if err := svc.StartPipeline(r.Context(), job); err != nil {
@@ -111,32 +118,64 @@ func GetJobHandler(svc JobService) http.HandlerFunc {
 }
 
 // @Summary List all pipeline jobs
-// @Description Retrieves a list of all historical and running jobs
 // @Tags Pipelines
 // @Produce json
-// @Success 200 {object} MockResponse
+// @Success 200 {array} models.Job
 // @Router /api/v1/pipelines [get]
 func ListJobsHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sendMockJSON(w, "List pipeline jobs endpoint hit", http.StatusOK)
+		jobs, err := svc.ListJobs(r.Context())
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to fetch jobs"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(jobs)
 	}
 }
 
 // @Summary Get real-time job progress
-// @Description Retrieves processing metrics (total vs processed records) for a running job
 // @Tags Pipelines
 // @Produce json
 // @Param id path string true "Job ID"
-// @Success 200 {object} MockResponse
+// @Success 200 {object} ProgressResponse
 // @Router /api/v1/pipelines/{id}/progress [get]
 func GetJobProgressHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sendMockJSON(w, "Get job progress hit for ID: "+r.PathValue("id"), http.StatusOK)
+		id := r.PathValue("id")
+		job, err := svc.GetJobByID(r.Context(), id)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Job not found"})
+			return
+		}
+
+		percent := 0.0
+		if job.TotalRecords > 0 {
+			percent = (float64(job.ProcessedRecords) / float64(job.TotalRecords)) * 100.0
+		} else if job.Status == models.StatusCompleted {
+			percent = 100.0
+		}
+
+		resp := ProgressResponse{
+			Status:           job.Status,
+			PercentComplete:  percent,
+			ProcessedRecords: job.ProcessedRecords,
+			ErrorCount:       job.ErrorCount,
+			StartTime:        job.CreatedAt,
+			EndTime:          job.FinishedAt,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
 
 // @Summary Get final job results
-// @Description Retrieves the aggregated mathematical outputs for a completed job
 // @Tags Pipelines
 // @Produce json
 // @Param id path string true "Job ID"
@@ -159,7 +198,6 @@ func GetJobResultsHandler(svc JobService) http.HandlerFunc {
 }
 
 // @Summary Get job error logs
-// @Description Retrieves any failed records and error logs for a job
 // @Tags Pipelines
 // @Produce json
 // @Param id path string true "Job ID"
@@ -182,23 +220,48 @@ func GetJobErrorsHandler(svc JobService) http.HandlerFunc {
 }
 
 // @Summary Cancel running pipeline job
-// @Description Safely cancels an active pipeline via context cancellation
 // @Tags Pipelines
 // @Produce json
 // @Param id path string true "Job ID"
 // @Success 200 {object} MockResponse
 // @Router /api/v1/pipelines/{id}/cancel [patch]
 func CancelJobHandler(svc JobService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { sendMockJSON(w, "Cancel job hit", http.StatusOK) }
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+
+		if err := svc.CancelJob(r.Context(), id); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(MockResponse{Message: "Job cancellation signal sent successfully"})
+	}
 }
 
 // @Summary Delete job and artifacts
-// @Description Removes a job and all associated artifacts from PostgreSQL
 // @Tags Pipelines
 // @Produce json
 // @Param id path string true "Job ID"
 // @Success 200 {object} MockResponse
 // @Router /api/v1/pipelines/{id} [delete]
 func DeleteJobHandler(svc JobService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { sendMockJSON(w, "Delete job hit", http.StatusOK) }
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+
+		// If it's running, cancel it first before deleting
+		_ = svc.CancelJob(r.Context(), id)
+
+		if err := svc.DeleteJob(r.Context(), id); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to delete job"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(MockResponse{Message: "Job deleted successfully"})
+	}
 }
