@@ -6,7 +6,13 @@ type JobConfig struct {
 	Validations     []ValidationRule     `json:"validations"`
 	Transformations []TransformationRule `json:"transformations"`
 	Aggregations    []AggregationDef     `json:"aggregations"`
+	ExportTargets   []ExportTarget       `json:"export_targets,omitempty"`
 	Concurrency     ConcurrencyOptions   `json:"concurrency"`
+}
+
+type ExportTarget struct {
+	Type   string `json:"type" example:"database"` // "database", "csv", "json"
+	Target string `json:"target,omitempty" example:"job_exported_records"`
 }
 
 type SourceDef struct {

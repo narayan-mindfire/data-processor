@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/narayan-mindfire/data-processor/backend/internal/models"
@@ -25,31 +26,45 @@ type PipelineRecord struct {
 type PipelineEngine struct {
 	job  *models.Job
 	repo JobRepository
+	log  *slog.Logger
 
 	// Core Pipeline Channels
 	recordsCh     chan *PipelineRecord
 	validatedCh   chan *PipelineRecord
 	transformedCh chan *PipelineRecord
+	exportCh      chan interface{} // Can hold *PipelineRecord or *models.JobResult
 
 	// Side Channels for Observability
 	errorCh    chan *models.JobError
 	progressCh chan int
+
+	// Metrics
+	ingestLatencyMs    atomic.Int64
+	validateLatencyMs  atomic.Int64
+	transformLatencyMs atomic.Int64
+	exportLatencyMs    atomic.Int64
+	ingestCount        atomic.Int64
+	validateCount      atomic.Int64
+	transformCount     atomic.Int64
+	exportCount        atomic.Int64
 }
 
-func NewPipelineEngine(job *models.Job, repo JobRepository) *PipelineEngine {
+func NewPipelineEngine(job *models.Job, repo JobRepository, log *slog.Logger) *PipelineEngine {
 	return &PipelineEngine{
 		job:           job,
 		repo:          repo,
+		log:           log,
 		recordsCh:     make(chan *PipelineRecord, 100),
 		validatedCh:   make(chan *PipelineRecord, 100),
 		transformedCh: make(chan *PipelineRecord, 100),
+		exportCh:      make(chan interface{}, 100),
 		errorCh:       make(chan *models.JobError, 100),
 		progressCh:    make(chan int, 100),
 	}
 }
 
 func (e *PipelineEngine) Run(ctx context.Context) {
-	slog.Info("Starting pipeline engine", "job_id", e.job.ID)
+	e.log.Info("Starting pipeline engine", "job_id", e.job.ID)
 
 	_ = e.updateJobStatus(ctx, models.StatusRunning)
 
@@ -104,7 +119,13 @@ func (e *PipelineEngine) Run(ctx context.Context) {
 		close(e.transformedCh)
 	}()
 
+	var exportWg sync.WaitGroup
+	exportWg.Add(1)
+	go e.exportWorker(ctx, &exportWg)
+
 	e.aggregate(ctx)
+
+	exportWg.Wait()
 
 	// Wait for all worker WaitGroups to finish their shutdown sequences
 	ingestWg.Wait()
@@ -116,7 +137,7 @@ func (e *PipelineEngine) Run(ctx context.Context) {
 	obsWg.Wait()
 
 	_ = e.updateJobStatus(ctx, models.StatusCompleted)
-	slog.Info("Pipeline engine finished successfully", "job_id", e.job.ID)
+	e.log.Info("Pipeline engine finished successfully", "job_id", e.job.ID)
 }
 
 // Helper to update Job status cleanly via the Repository
@@ -130,7 +151,7 @@ func (e *PipelineEngine) updateJobStatus(ctx context.Context, status string) err
 }
 
 func (e *PipelineEngine) aggregate(ctx context.Context) {
-	slog.Info("Starting Aggregation Fan-In stage", "job_id", e.job.ID)
+	e.log.Info("Starting Aggregation Fan-In stage", "job_id", e.job.ID)
 
 	results := make(map[string]float64)
 	counts := make(map[string]int)
@@ -138,7 +159,7 @@ func (e *PipelineEngine) aggregate(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("Aggregation cancelled by user", "job_id", e.job.ID)
+			e.log.Info("Aggregation cancelled by user", "job_id", e.job.ID)
 			return
 		case record, ok := <-e.transformedCh:
 			if !ok {
@@ -162,15 +183,15 @@ func (e *PipelineEngine) aggregate(ctx context.Context) {
 					SummaryJSON: string(summaryBytes),
 				}
 
-				if err := e.repo.InsertJobResult(context.Background(), jobResult); err != nil {
-					slog.Error("Failed to save final results to DB", "error", err)
-				}
+				e.exportCh <- jobResult
+				close(e.exportCh)
 
-				slog.Info("Aggregation complete! Final Results Saved", "job_id", e.job.ID, "results", string(summaryBytes))
+				e.log.Info("Aggregation complete! Final Results passed to Export Stage", "job_id", e.job.ID, "results", string(summaryBytes))
 				return
 			}
 
 			e.progressCh <- 1
+			e.exportCh <- record
 
 			for _, agg := range e.job.Config.Aggregations {
 				val, exists := record.Data[agg.Field]
@@ -223,9 +244,9 @@ func (e *PipelineEngine) observabilityTracker(ctx context.Context, wg *sync.Wait
 				e.errorCh = nil
 			} else {
 				errors++
-				slog.Error("Pipeline Error Occurred", "stage", jobErr.Stage, "msg", jobErr.ErrorMessage)
+				e.log.Error("Pipeline Error Occurred", "stage", jobErr.Stage, "msg", jobErr.ErrorMessage)
 				if err := e.repo.InsertJobError(context.Background(), jobErr); err != nil {
-					slog.Error("Failed to persist job error", "error", err)
+					e.log.Error("Failed to persist job error", "error", err)
 				}
 			}
 		case <-ticker.C:
@@ -241,7 +262,7 @@ func (e *PipelineEngine) observabilityTracker(ctx context.Context, wg *sync.Wait
 
 func (e *PipelineEngine) ingestCSV(ctx context.Context, source models.SourceDef, wg *sync.WaitGroup) {
 	defer wg.Done()
-	slog.Info("Starting CSV ingestion", "url", source.URL)
+	e.log.Info("Starting CSV ingestion", "url", source.URL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
 	if err != nil {
@@ -274,7 +295,7 @@ func (e *PipelineEngine) ingestCSV(ctx context.Context, source models.SourceDef,
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("CSV Ingestion cancelled", "url", source.URL)
+			e.log.Info("CSV Ingestion cancelled", "url", source.URL)
 			return
 		default:
 		}
@@ -304,12 +325,13 @@ func (e *PipelineEngine) ingestCSV(ctx context.Context, source models.SourceDef,
 		}
 		recordIndex++
 	}
-	slog.Info("Finished CSV ingestion", "url", source.URL, "records_read", recordIndex)
+	e.log.Info("Finished CSV ingestion", "url", source.URL, "records_read", recordIndex)
 }
 
 func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef, wg *sync.WaitGroup) {
 	defer wg.Done()
-	slog.Info("Starting JSON ingestion", "url", source.URL)
+	start := time.Now()
+	e.log.Info("Starting JSON ingestion", "url", source.URL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
 	if err != nil {
@@ -368,7 +390,7 @@ func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef
 	for i, data := range records {
 		select {
 		case <-ctx.Done():
-			slog.Info("JSON Ingestion cancelled", "url", source.URL)
+			e.log.Info("JSON Ingestion cancelled", "url", source.URL)
 			return
 		default:
 		}
@@ -379,7 +401,9 @@ func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef
 			Data:      data,
 		}
 	}
-	slog.Info("Finished JSON ingestion", "url", source.URL, "records_read", len(records))
+	e.ingestLatencyMs.Add(time.Since(start).Microseconds())
+	e.ingestCount.Add(int64(len(records)))
+	e.log.Info("Finished JSON ingestion", "url", source.URL, "records_read", len(records))
 }
 
 func (e *PipelineEngine) validationWorker(ctx context.Context, wg *sync.WaitGroup) {
@@ -393,7 +417,7 @@ func (e *PipelineEngine) validationWorker(ctx context.Context, wg *sync.WaitGrou
 			if !ok {
 				return // No more records to validate
 			}
-
+			start := time.Now()
 			isValid := true
 			for _, rule := range e.job.Config.Validations {
 				val, exists := record.Data[rule.Field]
@@ -427,6 +451,8 @@ func (e *PipelineEngine) validationWorker(ctx context.Context, wg *sync.WaitGrou
 			if isValid {
 				e.validatedCh <- record
 			}
+			e.validateLatencyMs.Add(time.Since(start).Microseconds())
+			e.validateCount.Add(1)
 		}
 	}
 }
@@ -442,6 +468,7 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 			if !ok {
 				return
 			}
+			start := time.Now()
 
 			for _, rule := range e.job.Config.Transformations {
 				val, exists := record.Data[rule.Field]
@@ -480,6 +507,63 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 			}
 
 			e.transformedCh <- record
+			e.transformLatencyMs.Add(time.Since(start).Microseconds())
+			e.transformCount.Add(1)
 		}
 	}
+}
+
+func (e *PipelineEngine) exportWorker(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	e.log.Info("Starting Export Worker", "job_id", e.job.ID)
+
+	for {
+		select {
+		case <-ctx.Done():
+			e.log.Info("Export Worker cancelled", "job_id", e.job.ID)
+			return
+		case data, ok := <-e.exportCh:
+			if !ok {
+				e.log.Info("Export Worker finished", "job_id", e.job.ID)
+				return
+			}
+			start := time.Now()
+			switch v := data.(type) {
+			case *PipelineRecord:
+				if err := e.repo.InsertExportedRecord(context.Background(), e.job.ID, v.Data); err != nil {
+					e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Export", RecordIndex: v.Index, ErrorMessage: "Failed to persist record: " + err.Error()}
+				}
+			case *models.JobResult:
+				if err := e.repo.InsertJobResult(context.Background(), v); err != nil {
+					e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Export", ErrorMessage: "Failed to save final results: " + err.Error()}
+				}
+			}
+			e.exportLatencyMs.Add(time.Since(start).Microseconds())
+			e.exportCount.Add(1)
+		}
+	}
+}
+
+func (e *PipelineEngine) GetMetrics() map[string]interface{} {
+	metrics := make(map[string]interface{})
+	stageLatencies := make(map[string]string)
+
+	formatLatency := func(totalMicros int64, count int64) string {
+		if count == 0 {
+			return "0ms"
+		}
+		avgMicros := float64(totalMicros) / float64(count)
+		if avgMicros < 1000 {
+			return fmt.Sprintf("%.2fµs", avgMicros)
+		}
+		return fmt.Sprintf("%.2fms", avgMicros/1000.0)
+	}
+
+	stageLatencies["ingest"] = formatLatency(e.ingestLatencyMs.Load(), e.ingestCount.Load())
+	stageLatencies["validate"] = formatLatency(e.validateLatencyMs.Load(), e.validateCount.Load())
+	stageLatencies["transform"] = formatLatency(e.transformLatencyMs.Load(), e.transformCount.Load())
+	stageLatencies["export"] = formatLatency(e.exportLatencyMs.Load(), e.exportCount.Load())
+
+	metrics["stage_latencies"] = stageLatencies
+	return metrics
 }

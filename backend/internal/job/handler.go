@@ -3,9 +3,12 @@ package job
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/narayan-mindfire/data-processor/backend/internal/models"
@@ -17,6 +20,7 @@ type JobService interface {
 	GetJobByID(ctx context.Context, id string) (*models.Job, error)
 	GetJobErrors(ctx context.Context, jobID string) ([]models.JobError, error)
 	GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error)
+	GetExportedRecords(ctx context.Context, jobID string) (*sql.Rows, error)
 	CancelJob(ctx context.Context, id string) error
 	DeleteJob(ctx context.Context, id string) error
 	ListJobs(ctx context.Context) ([]models.Job, error)
@@ -32,12 +36,14 @@ type ErrorResponse struct {
 
 // ProgressResponse defines the structured output required by the assignment
 type ProgressResponse struct {
-	Status           string     `json:"status"`
-	PercentComplete  float64    `json:"percent_complete"`
-	ProcessedRecords int        `json:"processed_records"`
-	ErrorCount       int        `json:"error_count"`
-	StartTime        time.Time  `json:"start_time"`
-	EndTime          *time.Time `json:"end_time,omitempty"`
+	Status           string            `json:"status"`
+	PercentComplete  float64           `json:"percent_complete"`
+	ProcessedRecords int               `json:"processed_records"`
+	RecordsPerSecond float64           `json:"records_per_second"`
+	ErrorCount       int               `json:"error_count"`
+	StageLatencies   map[string]string `json:"stage_latencies,omitempty"`
+	StartTime        time.Time         `json:"start_time"`
+	EndTime          *time.Time        `json:"end_time,omitempty"`
 }
 
 func sendMockJSON(w http.ResponseWriter, message string, statusCode int) {
@@ -160,11 +166,35 @@ func GetJobProgressHandler(svc JobService) http.HandlerFunc {
 			percent = 100.0
 		}
 
+		duration := time.Since(job.CreatedAt).Seconds()
+		if job.FinishedAt != nil {
+			duration = job.FinishedAt.Sub(job.CreatedAt).Seconds()
+		}
+
+		var recordsPerSec float64
+		if duration > 0 {
+			recordsPerSec = float64(job.ProcessedRecords) / duration
+		}
+
+		var stageLatencies map[string]string
+		if job.Metrics != nil {
+			if sl, ok := job.Metrics["stage_latencies"].(map[string]interface{}); ok {
+				stageLatencies = make(map[string]string)
+				for k, v := range sl {
+					if strV, ok := v.(string); ok {
+						stageLatencies[k] = strV
+					}
+				}
+			}
+		}
+
 		resp := ProgressResponse{
 			Status:           job.Status,
 			PercentComplete:  percent,
 			ProcessedRecords: job.ProcessedRecords,
+			RecordsPerSecond: recordsPerSec,
 			ErrorCount:       job.ErrorCount,
+			StageLatencies:   stageLatencies,
 			StartTime:        job.CreatedAt,
 			EndTime:          job.FinishedAt,
 		}
@@ -263,5 +293,103 @@ func DeleteJobHandler(svc JobService) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(MockResponse{Message: "Job deleted successfully"})
+	}
+}
+
+// @Summary Export job processed records as JSON stream
+// @Tags Pipelines
+// @Produce json
+// @Param id path string true "Job ID"
+// @Success 200 {string} string "JSON stream"
+// @Router /api/v1/pipelines/{id}/export/json [get]
+func ExportJobJSONHandler(svc JobService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		rows, err := svc.GetExportedRecords(r.Context(), id)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to fetch exported records"})
+			return
+		}
+		defer rows.Close()
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"job_%s_export.json\"", id))
+		w.WriteHeader(http.StatusOK)
+
+		_, _ = w.Write([]byte("["))
+		first := true
+		for rows.Next() {
+			var dataBytes []byte
+			if err := rows.Scan(&dataBytes); err != nil {
+				continue
+			}
+			if !first {
+				_, _ = w.Write([]byte(","))
+			}
+			_, _ = w.Write(dataBytes)
+			first = false
+		}
+		_, _ = w.Write([]byte("]"))
+	}
+}
+
+// @Summary Export job processed records as CSV stream
+// @Tags Pipelines
+// @Produce text/csv
+// @Param id path string true "Job ID"
+// @Success 200 {string} string "CSV stream"
+// @Router /api/v1/pipelines/{id}/export/csv [get]
+func ExportJobCSVHandler(svc JobService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		rows, err := svc.GetExportedRecords(r.Context(), id)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to fetch exported records"})
+			return
+		}
+		defer rows.Close()
+
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"job_%s_export.csv\"", id))
+		w.WriteHeader(http.StatusOK)
+
+		csvWriter := csv.NewWriter(w)
+		defer csvWriter.Flush()
+
+		headersWritten := false
+		var headers []string
+
+		for rows.Next() {
+			var dataBytes []byte
+			if err := rows.Scan(&dataBytes); err != nil {
+				continue
+			}
+			var record map[string]any
+			if err := json.Unmarshal(dataBytes, &record); err != nil {
+				continue
+			}
+
+			if !headersWritten {
+				for k := range record {
+					headers = append(headers, k)
+				}
+				sort.Strings(headers) // Ensure consistent column order
+				if err := csvWriter.Write(headers); err != nil {
+					return
+				}
+				headersWritten = true
+			}
+
+			var row []string
+			for _, h := range headers {
+				val := record[h]
+				row = append(row, fmt.Sprintf("%v", val))
+			}
+			if err := csvWriter.Write(row); err != nil {
+				return
+			}
+		}
 	}
 }

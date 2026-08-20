@@ -15,14 +15,15 @@ const (
 
 // Job represents the metadata of a pipeline run
 type Job struct {
-	ID               string     `json:"id"`
-	Config           JobConfig  `json:"config"`
-	Status           string     `json:"status"`
-	TotalRecords     int        `json:"total_records"`
-	ProcessedRecords int        `json:"processed_records"`
-	ErrorCount       int        `json:"error_count"`
-	CreatedAt        time.Time  `json:"created_at"`
-	FinishedAt       *time.Time `json:"finished_at,omitempty"`
+	ID               string                 `json:"id"`
+	Config           JobConfig              `json:"config"`
+	Status           string                 `json:"status"`
+	TotalRecords     int                    `json:"total_records"`
+	ProcessedRecords int                    `json:"processed_records"`
+	ErrorCount       int                    `json:"error_count"`
+	CreatedAt        time.Time              `json:"created_at"`
+	FinishedAt       *time.Time             `json:"finished_at,omitempty"`
+	Metrics          map[string]interface{} `json:"metrics,omitempty"`
 }
 
 // JobError represents a failed record during pipeline execution

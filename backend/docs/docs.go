@@ -16,6 +16,26 @@ const docTemplate = `{
     "basePath": "{{.BasePath}}",
     "paths": {
         "/api/v1/pipelines": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pipelines"
+                ],
+                "summary": "List all pipeline jobs",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Job"
+                            }
+                        }
+                    }
+                }
+            },
             "post": {
                 "consumes": [
                     "application/json"
@@ -34,7 +54,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/job.CreateJobRequest"
+                            "$ref": "#/definitions/models.JobConfig"
                         }
                     }
                 ],
@@ -74,31 +94,302 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "delete": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pipelines"
+                ],
+                "summary": "Delete job and artifacts",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/job.MockResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/pipelines/{id}/cancel": {
+            "patch": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pipelines"
+                ],
+                "summary": "Cancel running pipeline job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/job.MockResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/pipelines/{id}/errors": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pipelines"
+                ],
+                "summary": "Get job error logs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.JobError"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/pipelines/{id}/export/csv": {
+            "get": {
+                "produces": [
+                    "text/csv"
+                ],
+                "tags": [
+                    "Pipelines"
+                ],
+                "summary": "Export job processed records as CSV stream",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CSV stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/pipelines/{id}/export/json": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pipelines"
+                ],
+                "summary": "Export job processed records as JSON stream",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "JSON stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/pipelines/{id}/progress": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pipelines"
+                ],
+                "summary": "Get real-time job progress",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/job.ProgressResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/pipelines/{id}/results": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Pipelines"
+                ],
+                "summary": "Get final job results",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.JobResult"
+                            }
+                        }
+                    }
+                }
             }
         }
     },
     "definitions": {
-        "job.CreateJobRequest": {
+        "job.MockResponse": {
             "type": "object",
             "properties": {
-                "source_type": {
+                "message": {
                     "type": "string",
-                    "enum": [
-                        "csv",
-                        "json",
-                        "mixed"
-                    ],
-                    "example": "csv"
+                    "example": "Endpoint hit successfully"
+                }
+            }
+        },
+        "job.ProgressResponse": {
+            "type": "object",
+            "properties": {
+                "end_time": {
+                    "type": "string"
                 },
-                "source_url": {
+                "error_count": {
+                    "type": "integer"
+                },
+                "percent_complete": {
+                    "type": "number"
+                },
+                "processed_records": {
+                    "type": "integer"
+                },
+                "records_per_second": {
+                    "type": "number"
+                },
+                "stage_latencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.AggregationDef": {
+            "type": "object",
+            "properties": {
+                "field": {
                     "type": "string",
-                    "example": "https://covid.ourworldindata.org/data/owid-covid-data.csv"
+                    "example": "gender"
+                },
+                "output_name": {
+                    "type": "string",
+                    "example": "total_users"
+                },
+                "type": {
+                    "description": "\"sum\", \"average\", \"count\"",
+                    "type": "string",
+                    "example": "count"
+                }
+            }
+        },
+        "models.ConcurrencyOptions": {
+            "type": "object",
+            "properties": {
+                "transform_workers": {
+                    "type": "integer",
+                    "example": 5
+                },
+                "validation_workers": {
+                    "type": "integer",
+                    "example": 5
+                }
+            }
+        },
+        "models.ExportTarget": {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "example": "job_exported_records"
+                },
+                "type": {
+                    "description": "\"database\", \"csv\", \"json\"",
+                    "type": "string",
+                    "example": "database"
                 }
             }
         },
         "models.Job": {
             "type": "object",
             "properties": {
+                "config": {
+                    "$ref": "#/definitions/models.JobConfig"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -111,17 +402,157 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "metrics": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
                 "processed_records": {
                     "type": "integer"
-                },
-                "source_type": {
-                    "type": "string"
                 },
                 "status": {
                     "type": "string"
                 },
                 "total_records": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.JobConfig": {
+            "type": "object",
+            "properties": {
+                "aggregations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.AggregationDef"
+                    }
+                },
+                "concurrency": {
+                    "$ref": "#/definitions/models.ConcurrencyOptions"
+                },
+                "export_targets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ExportTarget"
+                    }
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SourceDef"
+                    }
+                },
+                "transformations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.TransformationRule"
+                    }
+                },
+                "validations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ValidationRule"
+                    }
+                }
+            }
+        },
+        "models.JobError": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "error_message": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "record_index": {
+                    "type": "integer"
+                },
+                "stage": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.JobResult": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "job_id": {
+                    "type": "string"
+                },
+                "summary_json": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SourceDef": {
+            "type": "object",
+            "properties": {
+                "json_array_path": {
+                    "type": "string",
+                    "example": "results"
+                },
+                "type": {
+                    "type": "string",
+                    "example": "json"
+                },
+                "url": {
+                    "type": "string",
+                    "example": "https://randomuser.me/api/?results=10"
+                }
+            }
+        },
+        "models.TransformationRule": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "description": "\"convert_to_int\", \"convert_to_float\", \"fill_empty\"",
+                    "type": "string",
+                    "example": "convert_to_float"
+                },
+                "default_value": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "field": {
+                    "type": "string",
+                    "example": "Weight(Pounds)"
+                },
+                "fill_with_avg": {
+                    "type": "boolean",
+                    "example": false
+                }
+            }
+        },
+        "models.ValidationRule": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string",
+                    "example": "gender"
+                },
+                "max_value": {
+                    "type": "number",
+                    "example": 100
+                },
+                "min_value": {
+                    "type": "number",
+                    "example": 0
+                },
+                "rule": {
+                    "description": "\"not_empty\", \"is_numeric\", \"range\"",
+                    "type": "string",
+                    "example": "not_empty"
                 }
             }
         }
