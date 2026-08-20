@@ -61,6 +61,13 @@ func (s *PipelineService) StartPipeline(ctx context.Context, job *models.Job) er
 			s.mu.Unlock()
 		}()
 		engine.Run(pipelineCtx)
+
+		status := models.StatusCompleted
+		if pipelineCtx.Err() == context.Canceled {
+			status = models.StatusCancelled
+		}
+		now := time.Now()
+		_ = s.repo.UpdateJobStatus(context.Background(), job.ID, status, &now)
 	}()
 
 	return nil
