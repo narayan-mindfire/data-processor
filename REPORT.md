@@ -14,7 +14,13 @@ This was solved using **Side-Channels**. The worker pools push metrics into a `p
 ## 3. Resilience and Context Cancellation
 The engine uses Go's `context.Context` to manage graceful shutdowns. If a client triggers the `PATCH /cancel` endpoint, the orchestrator cancels the context. Every single worker pool and ingestion goroutine actively listens to `ctx.Done()` and immediately aborts its work, preventing CPU/Memory leaks.
 
-## 4. Trade-offs
+## 4. Data Export & Streaming
+To avoid memory bottlenecks when returning enormous datasets, the pipeline implements an independent **Export Worker**. It listens to an `exportCh` and immediately persists processed records to a PostgreSQL `JSONB` column. The REST API exposes `GET /export/json` and `GET /export/csv` streaming endpoints that pipe database rows directly into the HTTP response stream chunk-by-chunk, bypassing memory buffers entirely.
+
+## 5. Real-Time Metrics & Latency Profiling
+To monitor pipeline health, we implemented lock-free performance counters. Using Go's `sync/atomic` package, the engine dynamically tracks microsecond-level processing times (`time.Since`) for every single record across ingestion, validation, transformation, and export. The API returns real-time processing throughput (`records_per_second`) dynamically, and upon completion, surfaces average `stage_latencies`.
+
+## 6. Trade-offs
 1. **Memory Buffering vs Disk Streaming:** Currently, the pipeline passes `map[string]any` records through channels in memory. While blazing fast, a massive 50GB CSV file could trigger an Out-Of-Memory (OOM) killer. A future trade-off would involve writing intermediate states to disk or a Kafka queue.
-2. **Channel Sizes:** The channels (`recordsCh`, `validatedCh`) are currently unbuffered (size 0). This creates strong back-pressure (workers don't ingest faster than they can process), but it trades off peak burst capacity.
-3. **Database Throttling:** Saving every single error individually could overwhelm PostgreSQL during a massive data failure. The system mitigates this by batch-updating the Job Progress every 2 seconds, but individual error inserts could eventually be upgraded to batch inserts.
+2. **Channel Sizes:** The channels (`recordsCh`, `validatedCh`) are currently buffered at size 100. This provides a minor buffer to absorb bursts, but still applies strong back-pressure.
+3. **Database Throttling:** Saving every single record to PostgreSQL individually during the `exportWorker` could overwhelm the DB during a massive data pipeline. The system could be upgraded to batch-insert exported records.

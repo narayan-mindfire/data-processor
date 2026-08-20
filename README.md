@@ -6,6 +6,8 @@ A high-performance, concurrent data ingestion and processing pipeline built in G
 
 - **Concurrent Processing:** Fan-out/Fan-in worker pools using goroutines and channels to process massive datasets.
 - **REST API:** Domain-driven architecture using Go's native `net/http` with Go 1.22+ method-based routing.
+- **Data Export & Streaming:** Persists processed records to PostgreSQL JSONB and streams massive datasets dynamically via `GET /export/json` and `/export/csv` without buffering in memory.
+- **Real-Time Metrics:** Advanced observability tracking atomic microsecond `stage_latencies` and dynamic `records_per_second` processing rates.
 - **PostgreSQL Database:** Schema versioning with `golang-migrate` and embedded SQL migrations auto-applied on startup.
 - **Graceful Shutdown:** Signal-aware server (`SIGINT`/`SIGTERM`) with a 30-second drain window to protect in-flight pipeline jobs.
 - **Pure Docker Tooling:** Run tests, linting, Swagger generation, and the full stack without installing Go locally.
@@ -39,11 +41,12 @@ graph TD
             Ingest -->|Records| Validate[Validation]
             Validate -->|Valid| Transform[Transformation]
             Transform -->|Enriched| Aggregate[Aggregation]
+            Aggregate -->|Results| Export[Export Worker]
         end
     end
 
     Repo -->|SQL| DB[(PostgreSQL)]
-    Aggregate -->|Save Results| Repo
+    Export -->|Save Records/Results| Repo
 ```
 
 ### Dependency Flow
@@ -129,9 +132,11 @@ open http://localhost:8080/api-docs/index.html
 | `POST` | `/api/v1/pipelines` | Start a new pipeline job |
 | `GET` | `/api/v1/pipelines` | List all pipeline jobs |
 | `GET` | `/api/v1/pipelines/{id}` | Get job details by ID |
-| `GET` | `/api/v1/pipelines/{id}/progress` | Get real-time job progress |
+| `GET` | `/api/v1/pipelines/{id}/progress` | Get real-time job progress and processing rate |
 | `GET` | `/api/v1/pipelines/{id}/results` | Get aggregated results |
 | `GET` | `/api/v1/pipelines/{id}/errors` | Get error logs for a job |
+| `GET` | `/api/v1/pipelines/{id}/export/json` | Stream exported records as JSON |
+| `GET` | `/api/v1/pipelines/{id}/export/csv` | Stream exported records as CSV |
 | `PATCH` | `/api/v1/pipelines/{id}/cancel` | Cancel a running job |
 | `DELETE` | `/api/v1/pipelines/{id}` | Delete a job and its artifacts |
 
@@ -190,6 +195,12 @@ You can paste this exact payload directly into the Swagger UI (`http://localhost
     {"type": "count", "field": "gender", "output_name": "total_random_users"},
     {"type": "sum", "field": "current_price", "output_name": "sum_crypto_prices"},
     {"type": "sum", "field": "elevation", "output_name": "total_elevation"}
+  ],
+  "export_targets": [
+    {
+      "type": "database",
+      "target": "job_exported_records"
+    }
   ],
   "concurrency": {
     "validation_workers": 10,
