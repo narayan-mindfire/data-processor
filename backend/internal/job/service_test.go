@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 
 func TestPipelineService_CancelJob(t *testing.T) {
 	repo := &MockJobRepository{}
-	svc := NewPipelineService(repo)
+	svc := NewPipelineService(repo, slog.Default())
 
 	// mock an active job in the service maps
 	ctx, cancel := context.WithCancel(context.Background())
@@ -30,7 +31,7 @@ func TestPipelineService_CancelJob(t *testing.T) {
 
 func TestPipelineService_ListJobs(t *testing.T) {
 	repo := &MockJobRepository{}
-	svc := NewPipelineService(repo)
+	svc := NewPipelineService(repo, slog.Default())
 
 	// Safe pass-through check
 	_, err := svc.ListJobs(context.Background())
@@ -41,7 +42,7 @@ func TestPipelineService_ListJobs(t *testing.T) {
 
 func TestPipelineService_PassThroughs(t *testing.T) {
 	repo := &MockJobRepository{}
-	svc := NewPipelineService(repo)
+	svc := NewPipelineService(repo, slog.Default())
 	ctx := context.Background()
 
 	_, _ = svc.GetJobByID(ctx, "test")

@@ -64,7 +64,7 @@ func main() {
 	log.Info("PostgreSQL connected and migrations applied successfully")
 
 	repo := job.NewPostgresJobRepository(db)
-	svc := job.NewPipelineService(repo)
+	svc := job.NewPipelineService(repo, log)
 	router := server.RegisterRoutes(svc)
 
 	srv := &http.Server{

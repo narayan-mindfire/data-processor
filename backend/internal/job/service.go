@@ -2,7 +2,9 @@ package job
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -18,6 +20,8 @@ type JobRepository interface {
 	InsertJobResult(ctx context.Context, result *models.JobResult) error
 	GetJobErrors(ctx context.Context, jobID string) ([]models.JobError, error)
 	GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error)
+	InsertExportedRecord(ctx context.Context, jobID string, data map[string]any) error
+	GetExportedRecords(ctx context.Context, jobID string) (*sql.Rows, error)
 	DeleteJob(ctx context.Context, id string) error
 	ListJobs(ctx context.Context) ([]models.Job, error)
 }
@@ -26,12 +30,14 @@ type PipelineService struct {
 	repo       JobRepository
 	activeJobs map[string]context.CancelFunc
 	mu         sync.Mutex
+	log        *slog.Logger
 }
 
-func NewPipelineService(repo JobRepository) *PipelineService {
+func NewPipelineService(repo JobRepository, log *slog.Logger) *PipelineService {
 	return &PipelineService{
 		repo:       repo,
 		activeJobs: make(map[string]context.CancelFunc),
+		log:        log,
 	}
 }
 
@@ -46,7 +52,7 @@ func (s *PipelineService) StartPipeline(ctx context.Context, job *models.Job) er
 	s.activeJobs[job.ID] = cancel
 	s.mu.Unlock()
 
-	engine := NewPipelineEngine(job, s.repo)
+	engine := NewPipelineEngine(job, s.repo, s.log)
 
 	go func() {
 		defer func() {
@@ -100,4 +106,8 @@ func (s *PipelineService) DeleteJob(ctx context.Context, id string) error {
 
 func (s *PipelineService) ListJobs(ctx context.Context) ([]models.Job, error) {
 	return s.repo.ListJobs(ctx)
+}
+
+func (s *PipelineService) GetExportedRecords(ctx context.Context, jobID string) (*sql.Rows, error) {
+	return s.repo.GetExportedRecords(ctx, jobID)
 }

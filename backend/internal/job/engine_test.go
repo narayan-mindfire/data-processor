@@ -2,7 +2,9 @@ package job
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -47,6 +49,12 @@ func (m *MockJobRepository) GetJobErrors(ctx context.Context, jobID string) ([]m
 func (m *MockJobRepository) GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error) {
 	return nil, nil
 }
+func (m *MockJobRepository) InsertExportedRecord(ctx context.Context, jobID string, data map[string]any) error {
+	return nil
+}
+func (m *MockJobRepository) GetExportedRecords(ctx context.Context, jobID string) (*sql.Rows, error) {
+	return nil, nil
+}
 func (m *MockJobRepository) DeleteJob(ctx context.Context, id string) error     { return nil }
 func (m *MockJobRepository) ListJobs(ctx context.Context) ([]models.Job, error) { return nil, nil }
 
@@ -64,7 +72,7 @@ func TestEngine_ValidationAndTransformation(t *testing.T) {
 		},
 	}
 
-	engine := NewPipelineEngine(job, &MockJobRepository{})
+	engine := NewPipelineEngine(job, &MockJobRepository{}, slog.Default())
 
 	// Push Valid Record
 	engine.recordsCh <- &PipelineRecord{Index: 1, Data: map[string]any{"age": "25"}}
@@ -111,7 +119,7 @@ func TestEngine_Aggregation(t *testing.T) {
 	}
 
 	repo := &MockJobRepository{}
-	engine := NewPipelineEngine(job, repo)
+	engine := NewPipelineEngine(job, repo, slog.Default())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -120,7 +128,12 @@ func TestEngine_Aggregation(t *testing.T) {
 	close(engine.transformedCh)
 
 	// Since aggregate saves to the repo, we verify it through the mock repo
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go engine.exportWorker(ctx, &wg)
+
 	engine.aggregate(ctx)
+	wg.Wait()
 
 	if repo.results != 1 {
 		t.Errorf("Expected exactly 1 job result saved, got %d", repo.results)
@@ -135,7 +148,7 @@ func TestEngine_IngestJSON(t *testing.T) {
 	defer ts.Close()
 
 	job := &models.Job{ID: "test-job", Config: models.JobConfig{}}
-	engine := NewPipelineEngine(job, &MockJobRepository{})
+	engine := NewPipelineEngine(job, &MockJobRepository{}, slog.Default())
 
 	var wg sync.WaitGroup
 	wg.Add(1)

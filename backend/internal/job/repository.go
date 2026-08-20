@@ -162,6 +162,21 @@ func (r *PostgresJobRepository) UpdateJobStatus(ctx context.Context, id string, 
 	return nil
 }
 
+func (r *PostgresJobRepository) InsertExportedRecord(ctx context.Context, jobID string, data map[string]any) error {
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal export data: %w", err)
+	}
+	query := `INSERT INTO job_exported_records (job_id, data) VALUES ($1, $2)`
+	_, err = r.DB.ExecContext(ctx, query, jobID, string(dataBytes))
+	return err
+}
+
+func (r *PostgresJobRepository) GetExportedRecords(ctx context.Context, jobID string) (*sql.Rows, error) {
+	query := `SELECT data FROM job_exported_records WHERE job_id = $1 ORDER BY created_at ASC, id ASC`
+	return r.DB.QueryContext(ctx, query, jobID)
+}
+
 func (r *PostgresJobRepository) DeleteJob(ctx context.Context, id string) error {
 	query := `DELETE FROM jobs WHERE id = $1`
 	_, err := r.DB.ExecContext(ctx, query, id)

@@ -20,6 +20,8 @@ func RegisterRoutes(svc job.JobService) *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/pipelines/{id}/progress", job.GetJobProgressHandler(svc))
 	mux.HandleFunc("GET /api/v1/pipelines/{id}/results", job.GetJobResultsHandler(svc))
 	mux.HandleFunc("GET /api/v1/pipelines/{id}/errors", job.GetJobErrorsHandler(svc))
+	mux.HandleFunc("GET /api/v1/pipelines/{id}/export/json", job.ExportJobJSONHandler(svc))
+	mux.HandleFunc("GET /api/v1/pipelines/{id}/export/csv", job.ExportJobCSVHandler(svc))
 	mux.HandleFunc("PATCH /api/v1/pipelines/{id}/cancel", job.CancelJobHandler(svc))
 	mux.HandleFunc("DELETE /api/v1/pipelines/{id}", job.DeleteJobHandler(svc))
 
