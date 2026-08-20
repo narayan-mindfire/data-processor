@@ -322,6 +322,15 @@ const docTemplate = `{
                 "processed_records": {
                     "type": "integer"
                 },
+                "records_per_second": {
+                    "type": "number"
+                },
+                "stage_latencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "start_time": {
                     "type": "string"
                 },
@@ -392,6 +401,10 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "metrics": {
+                    "type": "object",
+                    "additionalProperties": true
                 },
                 "processed_records": {
                     "type": "integer"

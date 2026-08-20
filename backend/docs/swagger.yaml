@@ -16,6 +16,12 @@ definitions:
         type: number
       processed_records:
         type: integer
+      records_per_second:
+        type: number
+      stage_latencies:
+        additionalProperties:
+          type: string
+        type: object
       start_time:
         type: string
       status:
@@ -65,6 +71,9 @@ definitions:
         type: string
       id:
         type: string
+      metrics:
+        additionalProperties: true
+        type: object
       processed_records:
         type: integer
       status:
