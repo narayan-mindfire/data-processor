@@ -1,20 +1,62 @@
 basePath: /
 definitions:
-  job.CreateJobRequest:
+  job.MockResponse:
     properties:
-      source_type:
-        enum:
-        - csv
-        - json
-        - mixed
-        example: csv
+      message:
+        example: Endpoint hit successfully
         type: string
-      source_url:
-        example: https://covid.ourworldindata.org/data/owid-covid-data.csv
+    type: object
+  job.ProgressResponse:
+    properties:
+      end_time:
+        type: string
+      error_count:
+        type: integer
+      percent_complete:
+        type: number
+      processed_records:
+        type: integer
+      start_time:
+        type: string
+      status:
+        type: string
+    type: object
+  models.AggregationDef:
+    properties:
+      field:
+        example: gender
+        type: string
+      output_name:
+        example: total_users
+        type: string
+      type:
+        description: '"sum", "average", "count"'
+        example: count
+        type: string
+    type: object
+  models.ConcurrencyOptions:
+    properties:
+      transform_workers:
+        example: 5
+        type: integer
+      validation_workers:
+        example: 5
+        type: integer
+    type: object
+  models.ExportTarget:
+    properties:
+      target:
+        example: job_exported_records
+        type: string
+      type:
+        description: '"database", "csv", "json"'
+        example: database
         type: string
     type: object
   models.Job:
     properties:
+      config:
+        $ref: '#/definitions/models.JobConfig'
       created_at:
         type: string
       error_count:
@@ -25,12 +67,105 @@ definitions:
         type: string
       processed_records:
         type: integer
-      source_type:
-        type: string
       status:
         type: string
       total_records:
         type: integer
+    type: object
+  models.JobConfig:
+    properties:
+      aggregations:
+        items:
+          $ref: '#/definitions/models.AggregationDef'
+        type: array
+      concurrency:
+        $ref: '#/definitions/models.ConcurrencyOptions'
+      export_targets:
+        items:
+          $ref: '#/definitions/models.ExportTarget'
+        type: array
+      sources:
+        items:
+          $ref: '#/definitions/models.SourceDef'
+        type: array
+      transformations:
+        items:
+          $ref: '#/definitions/models.TransformationRule'
+        type: array
+      validations:
+        items:
+          $ref: '#/definitions/models.ValidationRule'
+        type: array
+    type: object
+  models.JobError:
+    properties:
+      created_at:
+        type: string
+      error_message:
+        type: string
+      id:
+        type: integer
+      job_id:
+        type: string
+      record_index:
+        type: integer
+      stage:
+        type: string
+    type: object
+  models.JobResult:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      job_id:
+        type: string
+      summary_json:
+        type: string
+    type: object
+  models.SourceDef:
+    properties:
+      json_array_path:
+        example: results
+        type: string
+      type:
+        example: json
+        type: string
+      url:
+        example: https://randomuser.me/api/?results=10
+        type: string
+    type: object
+  models.TransformationRule:
+    properties:
+      action:
+        description: '"convert_to_int", "convert_to_float", "fill_empty"'
+        example: convert_to_float
+        type: string
+      default_value:
+        example: "0"
+        type: string
+      field:
+        example: Weight(Pounds)
+        type: string
+      fill_with_avg:
+        example: false
+        type: boolean
+    type: object
+  models.ValidationRule:
+    properties:
+      field:
+        example: gender
+        type: string
+      max_value:
+        example: 100
+        type: number
+      min_value:
+        example: 0
+        type: number
+      rule:
+        description: '"not_empty", "is_numeric", "range"'
+        example: not_empty
+        type: string
     type: object
 host: localhost:8080
 info:
@@ -40,6 +175,19 @@ info:
   version: "1.0"
 paths:
   /api/v1/pipelines:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Job'
+            type: array
+      summary: List all pipeline jobs
+      tags:
+      - Pipelines
     post:
       consumes:
       - application/json
@@ -49,7 +197,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/job.CreateJobRequest'
+          $ref: '#/definitions/models.JobConfig'
       produces:
       - application/json
       responses:
@@ -61,6 +209,23 @@ paths:
       tags:
       - Pipelines
   /api/v1/pipelines/{id}:
+    delete:
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/job.MockResponse'
+      summary: Delete job and artifacts
+      tags:
+      - Pipelines
     get:
       parameters:
       - description: Job ID
@@ -76,6 +241,118 @@ paths:
           schema:
             $ref: '#/definitions/models.Job'
       summary: Get pipeline job details
+      tags:
+      - Pipelines
+  /api/v1/pipelines/{id}/cancel:
+    patch:
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/job.MockResponse'
+      summary: Cancel running pipeline job
+      tags:
+      - Pipelines
+  /api/v1/pipelines/{id}/errors:
+    get:
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.JobError'
+            type: array
+      summary: Get job error logs
+      tags:
+      - Pipelines
+  /api/v1/pipelines/{id}/export/csv:
+    get:
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - text/csv
+      responses:
+        "200":
+          description: CSV stream
+          schema:
+            type: string
+      summary: Export job processed records as CSV stream
+      tags:
+      - Pipelines
+  /api/v1/pipelines/{id}/export/json:
+    get:
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: JSON stream
+          schema:
+            type: string
+      summary: Export job processed records as JSON stream
+      tags:
+      - Pipelines
+  /api/v1/pipelines/{id}/progress:
+    get:
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/job.ProgressResponse'
+      summary: Get real-time job progress
+      tags:
+      - Pipelines
+  /api/v1/pipelines/{id}/results:
+    get:
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.JobResult'
+            type: array
+      summary: Get final job results
       tags:
       - Pipelines
 swagger: "2.0"
