@@ -39,12 +39,13 @@ func (r *PostgresJobRepository) CreateJob(ctx context.Context, job *models.Job) 
 
 func (r *PostgresJobRepository) GetJobByID(ctx context.Context, id string) (*models.Job, error) {
 	query := `
-		SELECT id, config, status, total_records, processed_records, error_count, created_at, finished_at 
+		SELECT id, config, status, total_records, processed_records, error_count, created_at, finished_at, metrics 
 		FROM jobs 
 		WHERE id = $1
 	`
 	var job models.Job
 	var configBytes []byte
+	var metricsBytes []byte
 	var finishedAt sql.NullTime
 
 	err := r.DB.QueryRowContext(ctx, query, id).Scan(
@@ -56,6 +57,7 @@ func (r *PostgresJobRepository) GetJobByID(ctx context.Context, id string) (*mod
 		&job.ErrorCount,
 		&job.CreatedAt,
 		&finishedAt,
+		&metricsBytes,
 	)
 
 	if err != nil {
@@ -67,6 +69,10 @@ func (r *PostgresJobRepository) GetJobByID(ctx context.Context, id string) (*mod
 
 	if err := json.Unmarshal(configBytes, &job.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal job config: %w", err)
+	}
+
+	if len(metricsBytes) > 0 {
+		_ = json.Unmarshal(metricsBytes, &job.Metrics)
 	}
 
 	if finishedAt.Valid {
@@ -162,6 +168,19 @@ func (r *PostgresJobRepository) UpdateJobStatus(ctx context.Context, id string, 
 	return nil
 }
 
+func (r *PostgresJobRepository) UpdateJobMetrics(ctx context.Context, id string, metrics map[string]interface{}) error {
+	metricsBytes, err := json.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metrics: %w", err)
+	}
+	query := `UPDATE jobs SET metrics = $2 WHERE id = $1`
+	_, err = r.DB.ExecContext(ctx, query, id, metricsBytes)
+	if err != nil {
+		return fmt.Errorf("failed to update job metrics: %w", err)
+	}
+	return nil
+}
+
 func (r *PostgresJobRepository) InsertExportedRecord(ctx context.Context, jobID string, data map[string]any) error {
 	dataBytes, err := json.Marshal(data)
 	if err != nil {
@@ -185,8 +204,9 @@ func (r *PostgresJobRepository) DeleteJob(ctx context.Context, id string) error 
 
 func (r *PostgresJobRepository) ListJobs(ctx context.Context) ([]models.Job, error) {
 	query := `
-		SELECT id, config, status, total_records, processed_records, error_count, created_at, finished_at 
-		FROM jobs ORDER BY created_at DESC
+		SELECT id, config, status, total_records, processed_records, error_count, created_at, finished_at, metrics 
+		FROM jobs 
+		ORDER BY created_at DESC
 	`
 	rows, err := r.DB.QueryContext(ctx, query)
 	if err != nil {
@@ -198,13 +218,29 @@ func (r *PostgresJobRepository) ListJobs(ctx context.Context) ([]models.Job, err
 	for rows.Next() {
 		var job models.Job
 		var configBytes []byte
+		var metricsBytes []byte
 		var finishedAt sql.NullTime
 
-		if err := rows.Scan(&job.ID, &configBytes, &job.Status, &job.TotalRecords, &job.ProcessedRecords, &job.ErrorCount, &job.CreatedAt, &finishedAt); err != nil {
+		if err := rows.Scan(
+			&job.ID,
+			&configBytes,
+			&job.Status,
+			&job.TotalRecords,
+			&job.ProcessedRecords,
+			&job.ErrorCount,
+			&job.CreatedAt,
+			&finishedAt,
+			&metricsBytes,
+		); err != nil {
 			return nil, err
 		}
 
-		_ = json.Unmarshal(configBytes, &job.Config)
+		if err := json.Unmarshal(configBytes, &job.Config); err != nil {
+			continue
+		}
+		if len(metricsBytes) > 0 {
+			_ = json.Unmarshal(metricsBytes, &job.Metrics)
+		}
 		if finishedAt.Valid {
 			job.FinishedAt = &finishedAt.Time
 		}

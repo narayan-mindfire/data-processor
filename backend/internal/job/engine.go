@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/narayan-mindfire/data-processor/backend/internal/models"
@@ -36,6 +37,16 @@ type PipelineEngine struct {
 	// Side Channels for Observability
 	errorCh    chan *models.JobError
 	progressCh chan int
+
+	// Metrics
+	ingestLatencyMs    atomic.Int64
+	validateLatencyMs  atomic.Int64
+	transformLatencyMs atomic.Int64
+	exportLatencyMs    atomic.Int64
+	ingestCount        atomic.Int64
+	validateCount      atomic.Int64
+	transformCount     atomic.Int64
+	exportCount        atomic.Int64
 }
 
 func NewPipelineEngine(job *models.Job, repo JobRepository, log *slog.Logger) *PipelineEngine {
@@ -319,6 +330,7 @@ func (e *PipelineEngine) ingestCSV(ctx context.Context, source models.SourceDef,
 
 func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef, wg *sync.WaitGroup) {
 	defer wg.Done()
+	start := time.Now()
 	e.log.Info("Starting JSON ingestion", "url", source.URL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
@@ -389,6 +401,8 @@ func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef
 			Data:      data,
 		}
 	}
+	e.ingestLatencyMs.Add(time.Since(start).Microseconds())
+	e.ingestCount.Add(int64(len(records)))
 	e.log.Info("Finished JSON ingestion", "url", source.URL, "records_read", len(records))
 }
 
@@ -403,7 +417,7 @@ func (e *PipelineEngine) validationWorker(ctx context.Context, wg *sync.WaitGrou
 			if !ok {
 				return // No more records to validate
 			}
-
+			start := time.Now()
 			isValid := true
 			for _, rule := range e.job.Config.Validations {
 				val, exists := record.Data[rule.Field]
@@ -437,6 +451,8 @@ func (e *PipelineEngine) validationWorker(ctx context.Context, wg *sync.WaitGrou
 			if isValid {
 				e.validatedCh <- record
 			}
+			e.validateLatencyMs.Add(time.Since(start).Microseconds())
+			e.validateCount.Add(1)
 		}
 	}
 }
@@ -452,6 +468,7 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 			if !ok {
 				return
 			}
+			start := time.Now()
 
 			for _, rule := range e.job.Config.Transformations {
 				val, exists := record.Data[rule.Field]
@@ -490,6 +507,8 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 			}
 
 			e.transformedCh <- record
+			e.transformLatencyMs.Add(time.Since(start).Microseconds())
+			e.transformCount.Add(1)
 		}
 	}
 }
@@ -508,7 +527,7 @@ func (e *PipelineEngine) exportWorker(ctx context.Context, wg *sync.WaitGroup) {
 				e.log.Info("Export Worker finished", "job_id", e.job.ID)
 				return
 			}
-
+			start := time.Now()
 			switch v := data.(type) {
 			case *PipelineRecord:
 				if err := e.repo.InsertExportedRecord(context.Background(), e.job.ID, v.Data); err != nil {
@@ -519,6 +538,32 @@ func (e *PipelineEngine) exportWorker(ctx context.Context, wg *sync.WaitGroup) {
 					e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Export", ErrorMessage: "Failed to save final results: " + err.Error()}
 				}
 			}
+			e.exportLatencyMs.Add(time.Since(start).Microseconds())
+			e.exportCount.Add(1)
 		}
 	}
+}
+
+func (e *PipelineEngine) GetMetrics() map[string]interface{} {
+	metrics := make(map[string]interface{})
+	stageLatencies := make(map[string]string)
+
+	formatLatency := func(totalMicros int64, count int64) string {
+		if count == 0 {
+			return "0ms"
+		}
+		avgMicros := float64(totalMicros) / float64(count)
+		if avgMicros < 1000 {
+			return fmt.Sprintf("%.2fµs", avgMicros)
+		}
+		return fmt.Sprintf("%.2fms", avgMicros/1000.0)
+	}
+
+	stageLatencies["ingest"] = formatLatency(e.ingestLatencyMs.Load(), e.ingestCount.Load())
+	stageLatencies["validate"] = formatLatency(e.validateLatencyMs.Load(), e.validateCount.Load())
+	stageLatencies["transform"] = formatLatency(e.transformLatencyMs.Load(), e.transformCount.Load())
+	stageLatencies["export"] = formatLatency(e.exportLatencyMs.Load(), e.exportCount.Load())
+
+	metrics["stage_latencies"] = stageLatencies
+	return metrics
 }

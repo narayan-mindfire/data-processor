@@ -16,6 +16,7 @@ type JobRepository interface {
 	GetJobByID(ctx context.Context, id string) (*models.Job, error)
 	UpdateJobProgress(ctx context.Context, id string, processedRecords, errorCount int) error
 	UpdateJobStatus(ctx context.Context, id string, status string, finishedAt *time.Time) error
+	UpdateJobMetrics(ctx context.Context, id string, metrics map[string]interface{}) error
 	InsertJobError(ctx context.Context, jobError *models.JobError) error
 	InsertJobResult(ctx context.Context, result *models.JobResult) error
 	GetJobErrors(ctx context.Context, jobID string) ([]models.JobError, error)
@@ -66,6 +67,10 @@ func (s *PipelineService) StartPipeline(ctx context.Context, job *models.Job) er
 		if pipelineCtx.Err() == context.Canceled {
 			status = models.StatusCancelled
 		}
+
+		metrics := engine.GetMetrics()
+		_ = s.repo.UpdateJobMetrics(context.Background(), job.ID, metrics)
+
 		now := time.Now()
 		_ = s.repo.UpdateJobStatus(context.Background(), job.ID, status, &now)
 	}()

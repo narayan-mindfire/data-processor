@@ -28,6 +28,9 @@ func (m *MockJobRepository) GetJobByID(ctx context.Context, id string) (*models.
 func (m *MockJobRepository) UpdateJobStatus(ctx context.Context, id string, status string, finishedAt *time.Time) error {
 	return nil
 }
+func (m *MockJobRepository) UpdateJobMetrics(ctx context.Context, id string, metrics map[string]interface{}) error {
+	return nil
+}
 func (m *MockJobRepository) UpdateJobProgress(ctx context.Context, id string, processed, errors int) error {
 	return nil
 }

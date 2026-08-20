@@ -36,12 +36,14 @@ type ErrorResponse struct {
 
 // ProgressResponse defines the structured output required by the assignment
 type ProgressResponse struct {
-	Status           string     `json:"status"`
-	PercentComplete  float64    `json:"percent_complete"`
-	ProcessedRecords int        `json:"processed_records"`
-	ErrorCount       int        `json:"error_count"`
-	StartTime        time.Time  `json:"start_time"`
-	EndTime          *time.Time `json:"end_time,omitempty"`
+	Status           string            `json:"status"`
+	PercentComplete  float64           `json:"percent_complete"`
+	ProcessedRecords int               `json:"processed_records"`
+	RecordsPerSecond float64           `json:"records_per_second"`
+	ErrorCount       int               `json:"error_count"`
+	StageLatencies   map[string]string `json:"stage_latencies,omitempty"`
+	StartTime        time.Time         `json:"start_time"`
+	EndTime          *time.Time        `json:"end_time,omitempty"`
 }
 
 func sendMockJSON(w http.ResponseWriter, message string, statusCode int) {
@@ -164,11 +166,35 @@ func GetJobProgressHandler(svc JobService) http.HandlerFunc {
 			percent = 100.0
 		}
 
+		duration := time.Since(job.CreatedAt).Seconds()
+		if job.FinishedAt != nil {
+			duration = job.FinishedAt.Sub(job.CreatedAt).Seconds()
+		}
+
+		var recordsPerSec float64
+		if duration > 0 {
+			recordsPerSec = float64(job.ProcessedRecords) / duration
+		}
+
+		var stageLatencies map[string]string
+		if job.Metrics != nil {
+			if sl, ok := job.Metrics["stage_latencies"].(map[string]interface{}); ok {
+				stageLatencies = make(map[string]string)
+				for k, v := range sl {
+					if strV, ok := v.(string); ok {
+						stageLatencies[k] = strV
+					}
+				}
+			}
+		}
+
 		resp := ProgressResponse{
 			Status:           job.Status,
 			PercentComplete:  percent,
 			ProcessedRecords: job.ProcessedRecords,
+			RecordsPerSecond: recordsPerSec,
 			ErrorCount:       job.ErrorCount,
+			StageLatencies:   stageLatencies,
 			StartTime:        job.CreatedAt,
 			EndTime:          job.FinishedAt,
 		}
