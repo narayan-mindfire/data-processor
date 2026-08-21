@@ -41,24 +41,22 @@ export function JobDetails() {
   useEffect(() => {
     let mounted = true;
     if (jobProgress?.status === 'COMPLETED' && id) {
-      if (!exportUrls.json.length && !exportUrls.csv.length && !isLoadingExports) {
-        setIsLoadingExports(true);
-        Promise.all([
-          jobService.getExportURLs(id, 'json').catch(() => ({ status: 'error', urls: [] } as unknown as ExportResponse)),
-          jobService.getExportURLs(id, 'csv').catch(() => ({ status: 'error', urls: [] } as unknown as ExportResponse))
-        ]).then(([jsonRes, csvRes]) => {
-          if (mounted) {
-            setExportUrls({
-              json: jsonRes.urls || [],
-              csv: csvRes.urls || []
-            });
-            setIsLoadingExports(false);
-          }
-        });
-      }
+      setIsLoadingExports(true);
+      Promise.all([
+        jobService.getExportURLs(id, 'json').catch(() => ({ status: 'error', urls: [] } as unknown as ExportResponse)),
+        jobService.getExportURLs(id, 'csv').catch(() => ({ status: 'error', urls: [] } as unknown as ExportResponse))
+      ]).then(([jsonRes, csvRes]) => {
+        if (mounted) {
+          setExportUrls({
+            json: jsonRes.urls || [],
+            csv: csvRes.urls || []
+          });
+          setIsLoadingExports(false);
+        }
+      });
     }
     return () => { mounted = false; };
-  }, [jobProgress?.status, id, exportUrls.json.length, exportUrls.csv.length, isLoadingExports]);
+  }, [jobProgress?.status, id]);
 
   const handleCancel = async () => {
     if (!id) return;
