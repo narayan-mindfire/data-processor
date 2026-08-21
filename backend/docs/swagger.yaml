@@ -299,13 +299,14 @@ paths:
         required: true
         type: string
       produces:
-      - text/csv
+      - application/json
       responses:
         "200":
-          description: CSV stream
+          description: JSON object with urls
           schema:
-            type: string
-      summary: Export job processed records as CSV stream
+            additionalProperties: true
+            type: object
+      summary: Export job processed records as CSV S3 links
       tags:
       - Pipelines
   /api/v1/pipelines/{id}/export/json:
@@ -320,10 +321,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: JSON stream
+          description: JSON object with urls
           schema:
-            type: string
-      summary: Export job processed records as JSON stream
+            additionalProperties: true
+            type: object
+      summary: Export job processed records as JSON S3 links
       tags:
       - Pipelines
   /api/v1/pipelines/{id}/progress:

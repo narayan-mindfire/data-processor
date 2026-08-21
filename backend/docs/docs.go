@@ -184,12 +184,12 @@ const docTemplate = `{
         "/api/v1/pipelines/{id}/export/csv": {
             "get": {
                 "produces": [
-                    "text/csv"
+                    "application/json"
                 ],
                 "tags": [
                     "Pipelines"
                 ],
-                "summary": "Export job processed records as CSV stream",
+                "summary": "Export job processed records as CSV S3 links",
                 "parameters": [
                     {
                         "type": "string",
@@ -201,9 +201,10 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "CSV stream",
+                        "description": "JSON object with urls",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -217,7 +218,7 @@ const docTemplate = `{
                 "tags": [
                     "Pipelines"
                 ],
-                "summary": "Export job processed records as JSON stream",
+                "summary": "Export job processed records as JSON S3 links",
                 "parameters": [
                     {
                         "type": "string",
@@ -229,9 +230,10 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "JSON stream",
+                        "description": "JSON object with urls",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
