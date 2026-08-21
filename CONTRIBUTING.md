@@ -4,7 +4,7 @@ Welcome to the Data Processor repository! We enforce strict code quality gates t
 
 ## Prerequisites
 
-Only **Docker** is required. All Go tooling (builds, tests, linting, Swagger generation) runs inside containers — no local Go installation needed.
+Only **Docker** and **Make** are required. All Go tooling (builds, tests, linting, Swagger generation) runs inside containers — no local Go installation needed.
 
 ## Getting Started
 
@@ -24,6 +24,17 @@ docker compose up --build
 ```
 
 The API server starts on `http://localhost:8080` and migrations run automatically.
+
+## Local Development
+This project uses a `Makefile` to abstract complex Docker commands so you do not need to install Go locally on your machine. Run these commands from the root directory:
+| Command | Description |
+|---|---|
+| `make build` | Rebuilds the Go binary and starts the Docker Compose stack |
+| `make up` | Starts the Docker Compose stack without rebuilding |
+| `make down` | Stops and removes the Docker containers |
+| `make test` | Runs the Go Unit/Integration test suite with coverage via Docker |
+| `make lint` | Runs the strict `golangci-lint` check via Docker |
+| `make swagger` | Re-generates the Swagger API documentation via Docker |
 
 ## Development Workflow
 
