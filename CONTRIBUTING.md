@@ -4,7 +4,7 @@ Welcome to the Data Processor repository! We enforce strict code quality gates t
 
 ## Prerequisites
 
-Only **Docker** is required. All Go tooling (builds, tests, linting, Swagger generation) runs inside containers — no local Go installation needed.
+Only **Docker** and **Make** are required. All Go tooling (builds, tests, linting, Swagger generation) runs inside containers — no local Go installation needed.
 
 ## Getting Started
 
@@ -25,6 +25,17 @@ docker compose up --build
 
 The API server starts on `http://localhost:8080` and migrations run automatically.
 
+## Local Development
+This project uses a `Makefile` to abstract complex Docker commands so you do not need to install Go locally on your machine. Run these commands from the root directory:
+| Command | Description |
+|---|---|
+| `make build` | Rebuilds the Go binary and starts the Docker Compose stack |
+| `make up` | Starts the Docker Compose stack without rebuilding |
+| `make down` | Stops and removes the Docker containers |
+| `make test` | Runs the Go Unit/Integration test suite with coverage via Docker |
+| `make lint` | Runs the strict `golangci-lint` check via Docker |
+| `make swagger` | Re-generates the Swagger API documentation via Docker |
+
 ## Development Workflow
 
 ### Managing Dependencies
@@ -32,19 +43,19 @@ The API server starts on `http://localhost:8080` and migrations run automaticall
 Do **not** run `go get` locally. Use the Dockerised toolchain:
 
 ```bash
-docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.23-alpine go mod tidy
+docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.24-alpine go mod tidy
 ```
 
 ### Running Tests
 
 ```bash
-docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.23-alpine go test ./...
+docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.24-alpine go test ./...
 ```
 
 ### Running the Linter
 
 ```bash
-docker run --rm -v "$(pwd)/backend:/app" -w /app golangci/golangci-lint:latest golangci-lint run ./...
+docker run --rm -v "$(pwd)/backend:/app" -w /app golangci/golangci-lint:v1.64.5 golangci-lint run ./...
 ```
 
 ### Regenerating Swagger Docs
@@ -52,7 +63,7 @@ docker run --rm -v "$(pwd)/backend:/app" -w /app golangci/golangci-lint:latest g
 Swagger is auto-generated during `docker compose up --build`. To regenerate manually:
 
 ```bash
-docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.23-alpine sh -c \
+docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.24-alpine sh -c \
   "go install github.com/swaggo/swag/cmd/swag@latest && swag init -g cmd/api/main.go"
 ```
 

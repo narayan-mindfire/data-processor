@@ -23,6 +23,11 @@ type Config struct {
 	DBPass         string
 	DBName         string
 	AllowedOrigins []string
+	AWSRegion      string
+	AWSBucket      string
+	AWSEndpoint    string
+	AWSAccessKey   string
+	AWSSecretKey   string
 }
 
 func loadConfig() Config {
@@ -41,6 +46,11 @@ func loadConfig() Config {
 		DBPass:         dbPass,
 		DBName:         getEnv("DB_NAME", "dataprocessor"),
 		AllowedOrigins: allowedOrigins,
+		AWSRegion:      getEnv("AWS_REGION", "us-east-1"),
+		AWSBucket:      getEnv("AWS_BUCKET", "job-exports-bucket"),
+		AWSEndpoint:    getEnv("AWS_ENDPOINT_URL_S3", "http://localhost:4566"),
+		AWSAccessKey:   getEnv("AWS_ACCESS_KEY_ID", "test"),
+		AWSSecretKey:   getEnv("AWS_SECRET_ACCESS_KEY", "test"),
 	}
 }
 
@@ -69,7 +79,13 @@ func main() {
 	log.Info("PostgreSQL connected and migrations applied successfully")
 
 	repo := job.NewPostgresJobRepository(db)
-	svc := job.NewPipelineService(repo, log)
+	s3Client, err := store.NewS3Client(context.Background(), cfg.AWSRegion, cfg.AWSEndpoint, cfg.AWSAccessKey, cfg.AWSSecretKey, cfg.AWSBucket, log)
+	if err != nil {
+		log.Error("failed to initialize S3 client", "error", err)
+		os.Exit(1)
+	}
+
+	svc := job.NewPipelineService(repo, s3Client, log)
 	router := server.RegisterRoutes(svc, cfg.AllowedOrigins)
 
 	srv := &http.Server{
