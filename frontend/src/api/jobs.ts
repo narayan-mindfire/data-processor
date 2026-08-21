@@ -2,6 +2,11 @@ import { apiClient } from './client';
 import type { Job, JobConfig, ProgressResponse, ExportResponse } from '../types/models';
 
 export const jobService = {
+  listJobs: async (): Promise<Job[]> => {
+    const { data } = await apiClient.get('/pipelines');
+    return data || [];
+  },
+
   createJob: async (config: JobConfig): Promise<{ job_id: string; message: string }> => {
     const { data } = await apiClient.post('/pipelines', config);
     return data;
