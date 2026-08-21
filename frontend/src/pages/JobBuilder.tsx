@@ -48,7 +48,7 @@ export function JobBuilder() {
     try {
       const response = await jobService.createJob(config);
       await fetchJobs();
-      navigate(`/jobs/${response.job_id}`);
+      navigate(`/jobs/${response.id}`);
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Failed to create job');
       setIsSubmitting(false);
