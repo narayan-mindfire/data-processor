@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { Modal } from '../components/ui/Modal';
 import { ArrowLeft, Download, XCircle, Trash2, Clock, Activity, AlertTriangle } from 'lucide-react';
 import type { ExportResponse } from '../types/models';
 
@@ -17,6 +18,7 @@ export function JobDetails() {
 
   const [exportUrls, setExportUrls] = useState<{ json: string[], csv: string[] }>({ json: [], csv: [] });
   const [isLoadingExports, setIsLoadingExports] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -182,10 +184,26 @@ export function JobDetails() {
       )}
 
       <div className="flex justify-end pt-8">
-        <Button variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={handleDelete}>
+        <Button variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => setIsDeleteModalOpen(true)}>
           <Trash2 className="h-4 w-4 mr-2" /> Permanently Delete Job
         </Button>
       </div>
+
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        title="Delete Job"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setIsDeleteModalOpen(false)}>Cancel</Button>
+            <Button variant="danger" onClick={handleDelete}>Delete Permanently</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Are you sure you want to permanently delete this job and its configuration? This action cannot be undone.
+        </p>
+      </Modal>
     </div>
   );
 }
