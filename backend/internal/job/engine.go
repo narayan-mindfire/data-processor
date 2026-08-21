@@ -530,7 +530,7 @@ func (e *PipelineEngine) exportWorker(ctx context.Context, wg *sync.WaitGroup) {
 			start := time.Now()
 			switch v := data.(type) {
 			case *PipelineRecord:
-				if err := e.repo.InsertExportedRecord(context.Background(), e.job.ID, v.Data); err != nil {
+				if err := e.repo.InsertExportedRecord(context.Background(), e.job.ID, v.SourceURL, v.Data); err != nil {
 					e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Export", RecordIndex: v.Index, ErrorMessage: "Failed to persist record: " + err.Error()}
 				}
 			case *models.JobResult:
