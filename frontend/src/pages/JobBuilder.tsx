@@ -14,7 +14,7 @@ export function JobBuilder() {
   const { fetchJobs } = useJobStore();
   
   const [config, setConfig] = useState<JobConfig>({
-    sources: [{ url: '', format: 'json' }],
+    sources: [{ url: '', type: 'json' }],
     concurrency: { max_workers: 5, batch_size: 1000 }
   });
   
@@ -24,7 +24,7 @@ export function JobBuilder() {
   const addSource = () => {
     setConfig({
       ...config,
-      sources: [...config.sources, { url: '', format: 'json' }]
+      sources: [...config.sources, { url: '', type: 'json' }]
     });
   };
 
@@ -87,13 +87,23 @@ export function JobBuilder() {
                 <div className="w-1/4 space-y-2">
                   <label className="text-sm font-medium">Format</label>
                   <Select
-                    value={source.format}
-                    onChange={(e) => updateSource(idx, 'format', e.target.value)}
+                    value={source.type}
+                    onChange={(e) => updateSource(idx, 'type', e.target.value)}
                   >
                     <option value="json">JSON</option>
                     <option value="csv">CSV</option>
                   </Select>
                 </div>
+                {source.type === 'json' && (
+                  <div className="flex-1 space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">JSON Array Path (Optional)</label>
+                    <Input 
+                      placeholder="e.g. results"
+                      value={source.json_array_path || ''}
+                      onChange={(e) => updateSource(idx, 'json_array_path', e.target.value)}
+                    />
+                  </div>
+                )}
                 {config.sources.length > 1 && (
                   <div className="pt-7">
                     <Button type="button" variant="danger" size="sm" onClick={() => removeSource(idx)}>

@@ -25,9 +25,9 @@ export function JobDetails() {
 
     fetchProgress(id);
 
-    const isTerminal = jobProgress?.status === 'completed' || 
-                       jobProgress?.status === 'failed' || 
-                       jobProgress?.status === 'cancelled';
+    const isTerminal = jobProgress?.status === 'COMPLETED' || 
+                       jobProgress?.status === 'FAILED' || 
+                       jobProgress?.status === 'CANCELLED';
 
     if (isTerminal) return;
 
@@ -40,7 +40,7 @@ export function JobDetails() {
 
   useEffect(() => {
     let mounted = true;
-    if (jobProgress?.status === 'completed' && id) {
+    if (jobProgress?.status === 'COMPLETED' && id) {
       if (!exportUrls.json.length && !exportUrls.csv.length && !isLoadingExports) {
         setIsLoadingExports(true);
         Promise.all([
@@ -84,7 +84,7 @@ export function JobDetails() {
     return <div className="p-8 text-center text-muted-foreground animate-pulse">Loading job details...</div>;
   }
 
-  const isRunning = jobProgress.status === 'running' || jobProgress.status === 'pending';
+  const isRunning = jobProgress.status === 'RUNNING' || jobProgress.status === 'PENDING';
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -155,8 +155,8 @@ export function JobDetails() {
         </CardContent>
       </Card>
 
-      {jobProgress.status === 'completed' && (
-        <Card className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-card border-indigo-100 dark:border-indigo-900/50">
+      {jobProgress.status === 'COMPLETED' && (
+        <Card className="bg-linear-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-card border-indigo-100 dark:border-indigo-900/50">
           <CardHeader>
             <CardTitle className="text-indigo-900 dark:text-indigo-100">Exported Results</CardTitle>
           </CardHeader>
