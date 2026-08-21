@@ -1,4 +1,4 @@
-.PHONY: up down build test lint swagger clean
+.PHONY: up down build test lint swagger clean format
 
 # Start the application
 up:
@@ -27,3 +27,7 @@ swagger:
 # Clean up Docker system (Optional)
 clean:
 	docker system prune -f
+
+# Format Go code using gofmt
+format:
+	docker run --rm -v "$(PWD)/backend:/app" -w /app golang:1.23-alpine gofmt -s -w .
