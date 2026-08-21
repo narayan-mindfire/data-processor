@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jobService } from '../api/jobs';
-import { JobConfig } from '../types/models';
+import type { JobConfig } from '../types/models';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { useJobStore } from '../store/jobStore';
-import { Plus, Trash2, Code } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 export function JobBuilder() {
   const navigate = useNavigate();

@@ -15,7 +15,7 @@ interface JobState {
   addJob: (id: string, initialProgress: ProgressResponse) => void;
 }
 
-export const useJobStore = create<JobState>((set, get) => ({
+export const useJobStore = create<JobState>((set) => ({
   jobs: {},
   activeJobId: null,
   progress: {},

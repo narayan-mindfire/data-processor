@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
-import { JobStatus } from '../../types/models';
+import type { JobStatus } from '../../types/models';
 
 interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   status: JobStatus;
