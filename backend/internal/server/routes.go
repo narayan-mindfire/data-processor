@@ -9,7 +9,7 @@ import (
 )
 
 // RegisterRoutes initializes the master router for the application
-func RegisterRoutes(svc job.JobService) *http.ServeMux {
+func RegisterRoutes(svc job.JobService, allowedOrigins []string) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("/api-docs/", httpSwagger.WrapHandler)
@@ -25,5 +25,10 @@ func RegisterRoutes(svc job.JobService) *http.ServeMux {
 	mux.HandleFunc("PATCH /api/v1/pipelines/{id}/cancel", job.CancelJobHandler(svc))
 	mux.HandleFunc("DELETE /api/v1/pipelines/{id}", job.DeleteJobHandler(svc))
 
-	return mux
+	var handler http.Handler = mux
+	handler = CORSMiddleware(handler, allowedOrigins)
+	handler = SecurityMiddleware(handler)
+	handler = LoggerMiddleware(handler)
+
+	return handler
 }
