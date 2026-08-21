@@ -25,12 +25,18 @@ export function JobDetails() {
 
     fetchProgress(id);
 
+    const isTerminal = jobProgress?.status === 'completed' || 
+                       jobProgress?.status === 'failed' || 
+                       jobProgress?.status === 'cancelled';
+
+    if (isTerminal) return;
+
     const interval = setInterval(() => {
       fetchProgress(id);
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [id, fetchProgress]);
+  }, [id, fetchProgress, jobProgress?.status]);
 
   useEffect(() => {
     let mounted = true;
