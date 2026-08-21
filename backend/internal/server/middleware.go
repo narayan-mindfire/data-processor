@@ -1,10 +1,49 @@
 package server
 
 import (
+	"golang.org/x/time/rate"
 	"log/slog"
+	"net"
 	"net/http"
+	"sync"
 	"time"
 )
+
+var (
+	visitors = make(map[string]*rate.Limiter)
+	mu       sync.Mutex
+)
+
+// RateLimiterMiddleware blocks IP addresses that exceed the allowed request rate
+func RateLimiterMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			ip = r.RemoteAddr
+		}
+
+		limiter := getVisitor(ip)
+		if !limiter.Allow() {
+			// If they exceed 5 requests/secs
+			http.Error(w, "429 Too Many Requests - Please slow down!", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// getVisitor retrieves or creates a rate limiter for a specific IP
+func getVisitor(ip string) *rate.Limiter {
+	mu.Lock()
+	defer mu.Unlock()
+	limiter, exists := visitors[ip]
+	if !exists {
+		// Allow 5 requests per second, with a maximum burst of 10
+		limiter = rate.NewLimiter(5, 10)
+		visitors[ip] = limiter
+	}
+	return limiter
+}
 
 // SecurityMiddleware adds essential security headers to every response
 func SecurityMiddleware(next http.Handler) http.Handler {
@@ -23,7 +62,6 @@ func CORSMiddleware(next http.Handler, allowedOrigins []string) http.Handler {
 		incomingOrigin := r.Header.Get("Origin")
 		isAllowed := false
 		for _, o := range allowedOrigins {
-			slog.Info("CHECKING THIS ORIGIN", "origin", o)
 			if o == incomingOrigin {
 				isAllowed = true
 				break

@@ -6,7 +6,7 @@ A high-performance, concurrent data ingestion and processing pipeline built in G
 
 - **Concurrent Processing:** Fan-out/Fan-in worker pools using goroutines and channels to process massive datasets.
 - **REST API:** Domain-driven architecture using Go's native `net/http` with Go 1.22+ method-based routing.
-- **Data Export & Streaming:** Persists processed records to PostgreSQL JSONB and streams massive datasets dynamically via `GET /export/json` and `/export/csv` without buffering in memory.
+- **Ephemeral S3 Exports:** Persists processed records to PostgreSQL temporarily, streams them dynamically into S3 via LocalStack once complete, and returns pre-signed S3 links via `GET /export/json` and `/export/csv`.
 - **Real-Time Metrics:** Advanced observability tracking atomic microsecond `stage_latencies` and dynamic `records_per_second` processing rates.
 - **API Security:** Built-in middleware chain enforcing dynamic multi-origin CORS, Strict-Transport-Security (HSTS), XSS protection, and Clickjacking prevention headers.
 - **PostgreSQL Database:** Schema versioning with `golang-migrate` and embedded SQL migrations auto-applied on startup.
@@ -46,8 +46,9 @@ graph TD
         end
     end
 
-    Repo -->|SQL| DB[(PostgreSQL)]
+    Repo -->|SQL| DB[(PostgreSQL Ephemeral Buffer)]
     Export -->|Save Records/Results| Repo
+    Service -->|Background Sync via io.Pipe| S3[(AWS S3 via LocalStack)]
 ```
 
 ### Dependency Flow
@@ -136,8 +137,8 @@ open http://localhost:8080/api-docs/index.html
 | `GET` | `/api/v1/pipelines/{id}/progress` | Get real-time job progress and processing rate |
 | `GET` | `/api/v1/pipelines/{id}/results` | Get aggregated results |
 | `GET` | `/api/v1/pipelines/{id}/errors` | Get error logs for a job |
-| `GET` | `/api/v1/pipelines/{id}/export/json` | Stream exported records as JSON |
-| `GET` | `/api/v1/pipelines/{id}/export/csv` | Stream exported records as CSV |
+| `GET` | `/api/v1/pipelines/{id}/export/json` | Get S3 pre-signed links for exported records (JSON) |
+| `GET` | `/api/v1/pipelines/{id}/export/csv` | Get S3 pre-signed links for exported records (CSV) |
 | `PATCH` | `/api/v1/pipelines/{id}/cancel` | Cancel a running job |
 | `DELETE` | `/api/v1/pipelines/{id}` | Delete a job and its artifacts |
 
