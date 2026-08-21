@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,12 +16,13 @@ import (
 )
 
 type Config struct {
-	Port   string
-	DBHost string
-	DBPort string
-	DBUser string
-	DBPass string
-	DBName string
+	Port           string
+	DBHost         string
+	DBPort         string
+	DBUser         string
+	DBPass         string
+	DBName         string
+	AllowedOrigins []string
 }
 
 func loadConfig() Config {
@@ -28,14 +30,17 @@ func loadConfig() Config {
 	if dbPass == "" {
 		panic("CRITICAL: DB_PASSWORD environment variable is not set!")
 	}
+	rawOrigins := getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8080")
+	allowedOrigins := strings.Split(rawOrigins, ",")
 
 	return Config{
-		Port:   getEnv("PORT", "8080"),
-		DBHost: getEnv("DB_HOST", "localhost"),
-		DBPort: getEnv("DB_PORT", "5432"),
-		DBUser: getEnv("DB_USER", "postgres"),
-		DBPass: dbPass,
-		DBName: getEnv("DB_NAME", "dataprocessor"),
+		Port:           getEnv("PORT", "8080"),
+		DBHost:         getEnv("DB_HOST", "localhost"),
+		DBPort:         getEnv("DB_PORT", "5432"),
+		DBUser:         getEnv("DB_USER", "postgres"),
+		DBPass:         dbPass,
+		DBName:         getEnv("DB_NAME", "dataprocessor"),
+		AllowedOrigins: allowedOrigins,
 	}
 }
 
@@ -65,7 +70,7 @@ func main() {
 
 	repo := job.NewPostgresJobRepository(db)
 	svc := job.NewPipelineService(repo, log)
-	router := server.RegisterRoutes(svc)
+	router := server.RegisterRoutes(svc, cfg.AllowedOrigins)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

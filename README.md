@@ -8,6 +8,7 @@ A high-performance, concurrent data ingestion and processing pipeline built in G
 - **REST API:** Domain-driven architecture using Go's native `net/http` with Go 1.22+ method-based routing.
 - **Data Export & Streaming:** Persists processed records to PostgreSQL JSONB and streams massive datasets dynamically via `GET /export/json` and `/export/csv` without buffering in memory.
 - **Real-Time Metrics:** Advanced observability tracking atomic microsecond `stage_latencies` and dynamic `records_per_second` processing rates.
+- **API Security:** Built-in middleware chain enforcing dynamic multi-origin CORS, Strict-Transport-Security (HSTS), XSS protection, and Clickjacking prevention headers.
 - **PostgreSQL Database:** Schema versioning with `golang-migrate` and embedded SQL migrations auto-applied on startup.
 - **Graceful Shutdown:** Signal-aware server (`SIGINT`/`SIGTERM`) with a 30-second drain window to protect in-flight pipeline jobs.
 - **Pure Docker Tooling:** Run tests, linting, Swagger generation, and the full stack without installing Go locally.
@@ -219,6 +220,7 @@ You can paste this exact payload directly into the Swagger UI (`http://localhost
 | `DB_USER` | No | `postgres` | Database user |
 | `DB_NAME` | No | `dataprocessor` | Database name |
 | `PORT` | No | `8080` | API server port |
+| `ALLOWED_ORIGINS` | No | `http://localhost:3000,http://localhost:8080` | Comma-separated list of authorized frontend URLs for dynamic CORS reflection |
 
 ## License
 
