@@ -32,19 +32,19 @@ The API server starts on `http://localhost:8080` and migrations run automaticall
 Do **not** run `go get` locally. Use the Dockerised toolchain:
 
 ```bash
-docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.23-alpine go mod tidy
+docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.24-alpine go mod tidy
 ```
 
 ### Running Tests
 
 ```bash
-docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.23-alpine go test ./...
+docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.24-alpine go test ./...
 ```
 
 ### Running the Linter
 
 ```bash
-docker run --rm -v "$(pwd)/backend:/app" -w /app golangci/golangci-lint:latest golangci-lint run ./...
+docker run --rm -v "$(pwd)/backend:/app" -w /app golangci/golangci-lint:v1.64.5 golangci-lint run ./...
 ```
 
 ### Regenerating Swagger Docs
@@ -52,7 +52,7 @@ docker run --rm -v "$(pwd)/backend:/app" -w /app golangci/golangci-lint:latest g
 Swagger is auto-generated during `docker compose up --build`. To regenerate manually:
 
 ```bash
-docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.23-alpine sh -c \
+docker run --rm -v "$(pwd)/backend:/app" -w /app golang:1.24-alpine sh -c \
   "go install github.com/swaggo/swag/cmd/swag@latest && swag init -g cmd/api/main.go"
 ```
 
