@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/narayan-mindfire/data-processor/backend/internal/models"
+	"github.com/narayan-mindfire/data-processor/backend/internal/utils"
 )
 
 type PipelineRecord struct {
@@ -153,7 +154,7 @@ func (e *PipelineEngine) updateJobStatus(ctx context.Context, status string) err
 func (e *PipelineEngine) aggregate(ctx context.Context) {
 	e.log.Info("Starting Aggregation Fan-In stage", "job_id", e.job.ID)
 
-	results := make(map[string]float64)
+	results := make(map[string]any)
 	counts := make(map[string]int)
 
 	for {
@@ -167,7 +168,11 @@ func (e *PipelineEngine) aggregate(ctx context.Context) {
 				for _, agg := range e.job.Config.Aggregations {
 					if agg.Type == "average" {
 						if counts[agg.OutputName] > 0 {
-							results[agg.OutputName] = results[agg.OutputName] / float64(counts[agg.OutputName])
+							if valAny, exists := results[agg.OutputName]; exists {
+								if v, ok := valAny.(float64); ok {
+									results[agg.OutputName] = v / float64(counts[agg.OutputName])
+								}
+							}
 						}
 					}
 				}
@@ -194,13 +199,18 @@ func (e *PipelineEngine) aggregate(ctx context.Context) {
 			e.exportCh <- record
 
 			for _, agg := range e.job.Config.Aggregations {
-				val, exists := record.Data[agg.Field]
+				val, exists := utils.GetNestedField(record.Data, agg.Field)
 				if !exists || val == nil {
 					continue
 				}
 
 				if agg.Type == "count" {
-					results[agg.OutputName]++
+					strVal := fmt.Sprintf("%v", val)
+					if results[agg.OutputName] == nil {
+						results[agg.OutputName] = make(map[string]int)
+					}
+					freqMap := results[agg.OutputName].(map[string]int)
+					freqMap[strVal]++
 					continue
 				}
 
@@ -215,7 +225,12 @@ func (e *PipelineEngine) aggregate(ctx context.Context) {
 				}
 
 				if agg.Type == "sum" || agg.Type == "average" {
-					results[agg.OutputName] += num
+					if results[agg.OutputName] == nil {
+						results[agg.OutputName] = float64(0)
+					}
+					if v, ok := results[agg.OutputName].(float64); ok {
+						results[agg.OutputName] = v + num
+					}
 					counts[agg.OutputName]++
 				}
 			}
@@ -368,7 +383,7 @@ func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef
 		}
 	case map[string]interface{}:
 		if source.JSONArrayPath != "" && source.JSONArrayPath != "$" {
-			if nested, ok := v[source.JSONArrayPath]; ok {
+			if nested, ok := utils.GetNestedField(v, source.JSONArrayPath); ok {
 				if nestedArr, ok := nested.([]interface{}); ok {
 					for _, item := range nestedArr {
 						if m, ok := item.(map[string]interface{}); ok {
@@ -420,7 +435,7 @@ func (e *PipelineEngine) validationWorker(ctx context.Context, wg *sync.WaitGrou
 			start := time.Now()
 			isValid := true
 			for _, rule := range e.job.Config.Validations {
-				val, exists := record.Data[rule.Field]
+				val, exists := utils.GetNestedField(record.Data, rule.Field)
 
 				if !exists || val == nil {
 					if rule.Rule == "not_empty" {
@@ -471,7 +486,7 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 			start := time.Now()
 
 			for _, rule := range e.job.Config.Transformations {
-				val, exists := record.Data[rule.Field]
+				val, exists := utils.GetNestedField(record.Data, rule.Field)
 
 				strVal := ""
 				if exists && val != nil {
@@ -480,7 +495,7 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 
 				if rule.Action == "fill_empty" {
 					if strVal == "" {
-						record.Data[rule.Field] = rule.DefaultValue
+						utils.SetNestedField(record.Data, rule.Field, rule.DefaultValue)
 						strVal = rule.DefaultValue
 					}
 				}
@@ -488,7 +503,7 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 				if rule.Action == "convert_to_int" {
 					if strVal != "" {
 						if intVal, err := strconv.Atoi(strVal); err == nil {
-							record.Data[rule.Field] = intVal
+							utils.SetNestedField(record.Data, rule.Field, intVal)
 						} else {
 							e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Transformation", RecordIndex: record.Index, ErrorMessage: fmt.Sprintf("Failed to convert %s to int", rule.Field)}
 						}
@@ -498,7 +513,7 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 				if rule.Action == "convert_to_float" {
 					if strVal != "" {
 						if floatVal, err := strconv.ParseFloat(strVal, 64); err == nil {
-							record.Data[rule.Field] = floatVal
+							utils.SetNestedField(record.Data, rule.Field, floatVal)
 						} else {
 							e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Transformation", RecordIndex: record.Index, ErrorMessage: fmt.Sprintf("Failed to convert %s to float", rule.Field)}
 						}
@@ -530,7 +545,7 @@ func (e *PipelineEngine) exportWorker(ctx context.Context, wg *sync.WaitGroup) {
 			start := time.Now()
 			switch v := data.(type) {
 			case *PipelineRecord:
-				if err := e.repo.InsertExportedRecord(context.Background(), e.job.ID, v.Data); err != nil {
+				if err := e.repo.InsertExportedRecord(context.Background(), e.job.ID, v.SourceURL, v.Data); err != nil {
 					e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Export", RecordIndex: v.Index, ErrorMessage: "Failed to persist record: " + err.Error()}
 				}
 			case *models.JobResult:

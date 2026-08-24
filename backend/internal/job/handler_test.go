@@ -3,7 +3,6 @@ package job
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -25,12 +24,14 @@ func (m *MockJobService) GetJobErrors(ctx context.Context, jobID string) ([]mode
 func (m *MockJobService) GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error) {
 	return nil, nil
 }
-func (m *MockJobService) GetExportedRecords(ctx context.Context, jobID string) (*sql.Rows, error) {
+func (m *MockJobService) GetExportURLs(ctx context.Context, jobID string, format string) ([]string, error) {
 	return nil, nil
 }
-func (m *MockJobService) CancelJob(ctx context.Context, id string) error     { return nil }
-func (m *MockJobService) DeleteJob(ctx context.Context, id string) error     { return nil }
-func (m *MockJobService) ListJobs(ctx context.Context) ([]models.Job, error) { return nil, nil }
+func (m *MockJobService) CancelJob(ctx context.Context, id string) error { return nil }
+func (m *MockJobService) DeleteJob(ctx context.Context, id string) error { return nil }
+func (m *MockJobService) ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error) {
+	return nil, 0, nil
+}
 
 func TestCreateJobHandler(t *testing.T) {
 	svc := &MockJobService{}

@@ -181,19 +181,44 @@ func (r *PostgresJobRepository) UpdateJobMetrics(ctx context.Context, id string,
 	return nil
 }
 
-func (r *PostgresJobRepository) InsertExportedRecord(ctx context.Context, jobID string, data map[string]any) error {
+func (r *PostgresJobRepository) InsertExportedRecord(ctx context.Context, jobID string, sourceURL string, data map[string]any) error {
 	dataBytes, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal export data: %w", err)
 	}
-	query := `INSERT INTO job_exported_records (job_id, data) VALUES ($1, $2)`
-	_, err = r.DB.ExecContext(ctx, query, jobID, string(dataBytes))
+	query := `INSERT INTO job_exported_records (job_id, source_url, data) VALUES ($1, $2, $3)`
+	_, err = r.DB.ExecContext(ctx, query, jobID, sourceURL, string(dataBytes))
 	return err
 }
 
-func (r *PostgresJobRepository) GetExportedRecords(ctx context.Context, jobID string) (*sql.Rows, error) {
-	query := `SELECT data FROM job_exported_records WHERE job_id = $1 ORDER BY created_at ASC, id ASC`
-	return r.DB.QueryContext(ctx, query, jobID)
+func (r *PostgresJobRepository) GetExportedRecordsBySource(ctx context.Context, jobID string, sourceURL string) (*sql.Rows, error) {
+	query := `SELECT data FROM job_exported_records WHERE job_id = $1 AND source_url = $2 ORDER BY created_at ASC, id ASC`
+	return r.DB.QueryContext(ctx, query, jobID, sourceURL)
+}
+
+func (r *PostgresJobRepository) GetDistinctSources(ctx context.Context, jobID string) ([]string, error) {
+	query := `SELECT DISTINCT source_url FROM job_exported_records WHERE job_id = $1`
+	rows, err := r.DB.QueryContext(ctx, query, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sources []string
+	for rows.Next() {
+		var source string
+		if err := rows.Scan(&source); err != nil {
+			return nil, err
+		}
+		sources = append(sources, source)
+	}
+	return sources, nil
+}
+
+func (r *PostgresJobRepository) DeleteExportedRecords(ctx context.Context, jobID string) error {
+	query := `DELETE FROM job_exported_records WHERE job_id = $1`
+	_, err := r.DB.ExecContext(ctx, query, jobID)
+	return err
 }
 
 func (r *PostgresJobRepository) DeleteJob(ctx context.Context, id string) error {
@@ -202,15 +227,22 @@ func (r *PostgresJobRepository) DeleteJob(ctx context.Context, id string) error 
 	return err
 }
 
-func (r *PostgresJobRepository) ListJobs(ctx context.Context) ([]models.Job, error) {
+func (r *PostgresJobRepository) ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error) {
+	var total int
+	err := r.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	query := `
 		SELECT id, config, status, total_records, processed_records, error_count, created_at, finished_at, metrics 
 		FROM jobs 
 		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
 	`
-	rows, err := r.DB.QueryContext(ctx, query)
+	rows, err := r.DB.QueryContext(ctx, query, limit, offset)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -232,7 +264,7 @@ func (r *PostgresJobRepository) ListJobs(ctx context.Context) ([]models.Job, err
 			&finishedAt,
 			&metricsBytes,
 		); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		if err := json.Unmarshal(configBytes, &job.Config); err != nil {
@@ -250,5 +282,5 @@ func (r *PostgresJobRepository) ListJobs(ctx context.Context) ([]models.Job, err
 	if jobs == nil {
 		jobs = []models.Job{}
 	}
-	return jobs, nil
+	return jobs, total, nil
 }

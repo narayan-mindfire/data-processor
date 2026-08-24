@@ -52,14 +52,23 @@ func (m *MockJobRepository) GetJobErrors(ctx context.Context, jobID string) ([]m
 func (m *MockJobRepository) GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error) {
 	return nil, nil
 }
-func (m *MockJobRepository) InsertExportedRecord(ctx context.Context, jobID string, data map[string]any) error {
+func (m *MockJobRepository) InsertExportedRecord(ctx context.Context, jobID string, sourceURL string, data map[string]any) error {
 	return nil
 }
-func (m *MockJobRepository) GetExportedRecords(ctx context.Context, jobID string) (*sql.Rows, error) {
+func (m *MockJobRepository) GetExportedRecordsBySource(ctx context.Context, jobID string, sourceURL string) (*sql.Rows, error) {
 	return nil, nil
 }
-func (m *MockJobRepository) DeleteJob(ctx context.Context, id string) error     { return nil }
-func (m *MockJobRepository) ListJobs(ctx context.Context) ([]models.Job, error) { return nil, nil }
+func (m *MockJobRepository) GetDistinctSources(ctx context.Context, jobID string) ([]string, error) {
+	return nil, nil
+}
+func (m *MockJobRepository) DeleteExportedRecords(ctx context.Context, jobID string) error {
+	return nil
+}
+
+func (m *MockJobRepository) DeleteJob(ctx context.Context, id string) error { return nil }
+func (m *MockJobRepository) ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error) {
+	return nil, 0, nil
+}
 
 func TestEngine_ValidationAndTransformation(t *testing.T) {
 	job := &models.Job{

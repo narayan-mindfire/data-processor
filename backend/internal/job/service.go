@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/narayan-mindfire/data-processor/backend/internal/models"
+	"github.com/narayan-mindfire/data-processor/backend/internal/store"
 )
 
 type JobRepository interface {
@@ -21,22 +22,26 @@ type JobRepository interface {
 	InsertJobResult(ctx context.Context, result *models.JobResult) error
 	GetJobErrors(ctx context.Context, jobID string) ([]models.JobError, error)
 	GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error)
-	InsertExportedRecord(ctx context.Context, jobID string, data map[string]any) error
-	GetExportedRecords(ctx context.Context, jobID string) (*sql.Rows, error)
+	InsertExportedRecord(ctx context.Context, jobID string, sourceURL string, data map[string]any) error
+	GetExportedRecordsBySource(ctx context.Context, jobID string, sourceURL string) (*sql.Rows, error)
+	GetDistinctSources(ctx context.Context, jobID string) ([]string, error)
+	DeleteExportedRecords(ctx context.Context, jobID string) error
 	DeleteJob(ctx context.Context, id string) error
-	ListJobs(ctx context.Context) ([]models.Job, error)
+	ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error)
 }
 
 type PipelineService struct {
 	repo       JobRepository
+	s3Client   *store.S3Client
 	activeJobs map[string]context.CancelFunc
 	mu         sync.Mutex
 	log        *slog.Logger
 }
 
-func NewPipelineService(repo JobRepository, log *slog.Logger) *PipelineService {
+func NewPipelineService(repo JobRepository, s3Client *store.S3Client, log *slog.Logger) *PipelineService {
 	return &PipelineService{
 		repo:       repo,
+		s3Client:   s3Client,
 		activeJobs: make(map[string]context.CancelFunc),
 		log:        log,
 	}
@@ -68,11 +73,14 @@ func (s *PipelineService) StartPipeline(ctx context.Context, job *models.Job) er
 			status = models.StatusCancelled
 		}
 
-		metrics := engine.GetMetrics()
-		_ = s.repo.UpdateJobMetrics(context.Background(), job.ID, metrics)
-
 		now := time.Now()
 		_ = s.repo.UpdateJobStatus(context.Background(), job.ID, status, &now)
+		_ = s.repo.UpdateJobMetrics(context.Background(), job.ID, engine.GetMetrics())
+
+		if status == models.StatusCompleted {
+			// Trigger ephemeral buffer cleanup and S3 sync in the background
+			go s.SyncToS3(job.ID)
+		}
 	}()
 
 	return nil
@@ -116,10 +124,6 @@ func (s *PipelineService) DeleteJob(ctx context.Context, id string) error {
 	return s.repo.DeleteJob(ctx, id)
 }
 
-func (s *PipelineService) ListJobs(ctx context.Context) ([]models.Job, error) {
-	return s.repo.ListJobs(ctx)
-}
-
-func (s *PipelineService) GetExportedRecords(ctx context.Context, jobID string) (*sql.Rows, error) {
-	return s.repo.GetExportedRecords(ctx, jobID)
+func (s *PipelineService) ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error) {
+	return s.repo.ListJobs(ctx, limit, offset)
 }

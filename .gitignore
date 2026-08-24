@@ -1,1 +1,4 @@
 .env
+volume/
+node_modules/
+dist/

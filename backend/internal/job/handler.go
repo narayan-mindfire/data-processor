@@ -3,12 +3,10 @@ package job
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
+	"strconv"
 	"time"
 
 	"github.com/narayan-mindfire/data-processor/backend/internal/models"
@@ -20,10 +18,10 @@ type JobService interface {
 	GetJobByID(ctx context.Context, id string) (*models.Job, error)
 	GetJobErrors(ctx context.Context, jobID string) ([]models.JobError, error)
 	GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error)
-	GetExportedRecords(ctx context.Context, jobID string) (*sql.Rows, error)
+	GetExportURLs(ctx context.Context, jobID string, format string) ([]string, error)
 	CancelJob(ctx context.Context, id string) error
 	DeleteJob(ctx context.Context, id string) error
-	ListJobs(ctx context.Context) ([]models.Job, error)
+	ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error)
 }
 
 type MockResponse struct {
@@ -126,20 +124,42 @@ func GetJobHandler(svc JobService) http.HandlerFunc {
 // @Summary List all pipeline jobs
 // @Tags Pipelines
 // @Produce json
-// @Success 200 {array} models.Job
+// @Param limit query int false "Number of jobs to return" default(10)
+// @Param offset query int false "Number of jobs to skip" default(0)
+// @Success 200 {object} models.PaginatedJobsResponse
 // @Router /api/v1/pipelines [get]
 func ListJobsHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		jobs, err := svc.ListJobs(r.Context())
+		limitStr := r.URL.Query().Get("limit")
+		offsetStr := r.URL.Query().Get("offset")
+
+		limit := 10
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+
+		offset := 0
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+
+		jobs, total, err := svc.ListJobs(r.Context(), limit, offset)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to fetch jobs"})
 			return
 		}
 
+		response := models.PaginatedJobsResponse{
+			Data:       jobs,
+			TotalCount: total,
+			Limit:      limit,
+			Offset:     offset,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(jobs)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 
@@ -296,100 +316,56 @@ func DeleteJobHandler(svc JobService) http.HandlerFunc {
 	}
 }
 
-// @Summary Export job processed records as JSON stream
+// @Summary Export job processed records as JSON S3 links
 // @Tags Pipelines
 // @Produce json
 // @Param id path string true "Job ID"
-// @Success 200 {string} string "JSON stream"
+// @Success 200 {object} map[string]interface{} "JSON object with urls"
 // @Router /api/v1/pipelines/{id}/export/json [get]
 func ExportJobJSONHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		rows, err := svc.GetExportedRecords(r.Context(), id)
+
+		urls, err := svc.GetExportURLs(r.Context(), id, "json")
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to fetch exported records"})
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to generate JSON S3 links: " + err.Error()})
 			return
 		}
-		defer rows.Close()
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"job_%s_export.json\"", id))
 		w.WriteHeader(http.StatusOK)
 
-		_, _ = w.Write([]byte("["))
-		first := true
-		for rows.Next() {
-			var dataBytes []byte
-			if err := rows.Scan(&dataBytes); err != nil {
-				continue
-			}
-			if !first {
-				_, _ = w.Write([]byte(","))
-			}
-			_, _ = w.Write(dataBytes)
-			first = false
-		}
-		_, _ = w.Write([]byte("]"))
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "completed",
+			"urls":   urls,
+		})
 	}
 }
 
-// @Summary Export job processed records as CSV stream
+// @Summary Export job processed records as CSV S3 links
 // @Tags Pipelines
-// @Produce text/csv
+// @Produce json
 // @Param id path string true "Job ID"
-// @Success 200 {string} string "CSV stream"
+// @Success 200 {object} map[string]interface{} "JSON object with urls"
 // @Router /api/v1/pipelines/{id}/export/csv [get]
 func ExportJobCSVHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		rows, err := svc.GetExportedRecords(r.Context(), id)
+
+		urls, err := svc.GetExportURLs(r.Context(), id, "csv")
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to fetch exported records"})
+			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to generate CSV S3 links: " + err.Error()})
 			return
 		}
-		defer rows.Close()
 
-		w.Header().Set("Content-Type", "text/csv")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"job_%s_export.csv\"", id))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 
-		csvWriter := csv.NewWriter(w)
-		defer csvWriter.Flush()
-
-		headersWritten := false
-		var headers []string
-
-		for rows.Next() {
-			var dataBytes []byte
-			if err := rows.Scan(&dataBytes); err != nil {
-				continue
-			}
-			var record map[string]any
-			if err := json.Unmarshal(dataBytes, &record); err != nil {
-				continue
-			}
-
-			if !headersWritten {
-				for k := range record {
-					headers = append(headers, k)
-				}
-				sort.Strings(headers) // Ensure consistent column order
-				if err := csvWriter.Write(headers); err != nil {
-					return
-				}
-				headersWritten = true
-			}
-
-			var row []string
-			for _, h := range headers {
-				val := record[h]
-				row = append(row, fmt.Sprintf("%v", val))
-			}
-			if err := csvWriter.Write(row); err != nil {
-				return
-			}
-		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "completed",
+			"urls":   urls,
+		})
 	}
 }

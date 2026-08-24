@@ -6,18 +6,18 @@ A high-performance, concurrent data ingestion and processing pipeline built in G
 
 - **Concurrent Processing:** Fan-out/Fan-in worker pools using goroutines and channels to process massive datasets.
 - **REST API:** Domain-driven architecture using Go's native `net/http` with Go 1.22+ method-based routing.
-- **Data Export & Streaming:** Persists processed records to PostgreSQL JSONB and streams massive datasets dynamically via `GET /export/json` and `/export/csv` without buffering in memory.
+- **Ephemeral S3 Exports:** Persists processed records to PostgreSQL temporarily, streams them dynamically into S3 via LocalStack once complete, and returns pre-signed S3 links via `GET /export/json` and `/export/csv`.
 - **Real-Time Metrics:** Advanced observability tracking atomic microsecond `stage_latencies` and dynamic `records_per_second` processing rates.
 - **API Security:** Built-in middleware chain enforcing dynamic multi-origin CORS, Strict-Transport-Security (HSTS), XSS protection, and Clickjacking prevention headers.
 - **PostgreSQL Database:** Schema versioning with `golang-migrate` and embedded SQL migrations auto-applied on startup.
-- **Graceful Shutdown:** Signal-aware server (`SIGINT`/`SIGTERM`) with a 30-second drain window to protect in-flight pipeline jobs.
+- **Graceful Shutdown:** Signal-aware server (`SIGINT`/`SIGTERM`) with a 30-second drain window to protect in-flight pipeline jobs
 - **Pure Docker Tooling:** Run tests, linting, Swagger generation, and the full stack without installing Go locally.
 
 ## Technology Stack
 
 | Layer | Technology |
 |---|---|
-| Language | Go 1.23 |
+| Language | Go 1.24 |
 | HTTP Router | `net/http` (stdlib, Go 1.22+ path params) |
 | Database | PostgreSQL 16 |
 | Migrations | `golang-migrate/migrate` (embedded via `go:embed`) |
@@ -46,8 +46,9 @@ graph TD
         end
     end
 
-    Repo -->|SQL| DB[(PostgreSQL)]
+    Repo -->|SQL| DB[(PostgreSQL Ephemeral Buffer)]
     Export -->|Save Records/Results| Repo
+    Service -->|Background Sync via io.Pipe| S3[(AWS S3 via LocalStack)]
 ```
 
 ### Dependency Flow
@@ -69,29 +70,25 @@ main.go → server.RegisterRoutes(svc)
 ## Project Layout
 
 ```
-backend/
-├── cmd/api/                  Application entry point and config
-│   └── main.go
-├── internal/                 Private application code (Go import boundary)
-│   ├── job/                  Domain package — handler, service, repository co-located
-│   │   ├── handler.go        HTTP handlers + JobService interface (consumer-defined)
-│   │   ├── service.go        Business logic + JobRepository interface (consumer-defined)
-│   │   └── repository.go     PostgreSQL implementation of JobRepository
-│   ├── server/               HTTP wiring
-│   │   └── routes.go         Route registration, Swagger mount
-│   ├── models/               Shared domain types
-│   │   └── job.go            Job, JobError, JobResult structs + status constants
-│   ├── pipeline/             Concurrent processing engine
-│   └── store/                Database connection and migrations
-│       ├── db.go             Connection pool setup + auto-migration
-│       └── migrations/       Embedded SQL migration files
-├── pkg/                      Reusable, importable packages
-│   ├── apperrors/            Sentinel errors + AppError struct
-│   └── logger/               Structured JSON logger factory
-├── docs/                     Auto-generated Swagger documentation
-├── Dockerfile                Multi-stage production build
-├── .golangci.yml             Linter configuration
-└── go.mod / go.sum
+.
+├── backend/                  Go API and Data processing engine
+│   ├── cmd/api/              Application entry point and config
+│   │   └── main.go
+│   ├── internal/             Private application code (Go import boundary)
+│   │   ├── job/              Domain package — handler, service, repository co-located
+│   │   ├── server/           HTTP wiring and route registration
+│   │   ├── models/           Shared domain types
+│   │   └── store/            Database connection and migrations
+│   ├── pkg/                  Reusable, importable packages
+│   ├── docs/                 Auto-generated Swagger documentation
+│   ├── Dockerfile            Multi-stage production build
+│   ├── .golangci.yml         Linter configuration
+│   └── go.mod / go.sum
+├── frontend/                 Vite web application
+├── .githooks/                Git pre-commit hooks for quality gates
+├── docker-compose.yml        Local development stack
+├── Makefile                  Tooling and Docker command abstractions
+└── README.md
 ```
 
 > This layout follows the [golang-standards/project-layout](https://github.com/golang-standards/project-layout) convention and uses **domain-driven packaging** — each feature area (`job/`) co-locates its handler, service, and repository rather than grouping by technical layer.
@@ -114,12 +111,15 @@ cp .env.example .env          # edit DB_PASSWORD for production
 docker compose up --build
 ```
 
-This starts PostgreSQL and the API server. Migrations run automatically on boot.
+This starts PostgreSQL, LocalStack (S3), the Go API server, and the React Frontend. Migrations run automatically on boot.
 
 ### 3. Verify
 
 ```bash
-# Health check
+# Open the Frontend Dashboard UI
+open http://localhost:5173
+
+# API Health check
 curl http://localhost:8080/api/v1/pipelines
 
 # Swagger UI
@@ -136,8 +136,8 @@ open http://localhost:8080/api-docs/index.html
 | `GET` | `/api/v1/pipelines/{id}/progress` | Get real-time job progress and processing rate |
 | `GET` | `/api/v1/pipelines/{id}/results` | Get aggregated results |
 | `GET` | `/api/v1/pipelines/{id}/errors` | Get error logs for a job |
-| `GET` | `/api/v1/pipelines/{id}/export/json` | Stream exported records as JSON |
-| `GET` | `/api/v1/pipelines/{id}/export/csv` | Stream exported records as CSV |
+| `GET` | `/api/v1/pipelines/{id}/export/json` | Get S3 pre-signed links for exported records (JSON) |
+| `GET` | `/api/v1/pipelines/{id}/export/csv` | Get S3 pre-signed links for exported records (CSV) |
 | `PATCH` | `/api/v1/pipelines/{id}/cancel` | Cancel a running job |
 | `DELETE` | `/api/v1/pipelines/{id}` | Delete a job and its artifacts |
 
@@ -181,7 +181,8 @@ You can paste this exact payload directly into the Swagger UI (`http://localhost
   ],
   "validations": [
     {"field": "Weight(Pounds)", "rule": "not_empty"},
-    {"field": "gender", "rule": "not_empty"},
+    {"field": "name.first", "rule": "not_empty"},
+    {"field": "location.city", "rule": "not_empty"},
     {"field": "current_price", "rule": "not_empty"},
     {"field": "elevation", "rule": "not_empty"}
   ],
@@ -193,7 +194,7 @@ You can paste this exact payload directly into the Swagger UI (`http://localhost
   "aggregations": [
     {"type": "average", "field": "Weight(Pounds)", "output_name": "average_weight"},
     {"type": "count", "field": "id", "output_name": "total_json_posts"},
-    {"type": "count", "field": "gender", "output_name": "total_random_users"},
+    {"type": "count", "field": "location.city", "output_name": "total_cities_processed"},
     {"type": "sum", "field": "current_price", "output_name": "sum_crypto_prices"},
     {"type": "sum", "field": "elevation", "output_name": "total_elevation"}
   ],
