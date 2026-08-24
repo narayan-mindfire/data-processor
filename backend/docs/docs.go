@@ -30,7 +30,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.Job"
+                                "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.Job"
                             }
                         }
                     }
@@ -54,7 +54,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.JobConfig"
+                            "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.JobConfig"
                         }
                     }
                 ],
@@ -62,7 +62,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/models.Job"
+                            "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.Job"
                         }
                     }
                 }
@@ -90,7 +90,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Job"
+                            "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.Job"
                         }
                     }
                 }
@@ -116,7 +116,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/job.MockResponse"
+                            "$ref": "#/definitions/internal_job.MockResponse"
                         }
                     }
                 }
@@ -144,7 +144,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/job.MockResponse"
+                            "$ref": "#/definitions/internal_job.MockResponse"
                         }
                     }
                 }
@@ -174,7 +174,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.JobError"
+                                "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.JobError"
                             }
                         }
                     }
@@ -261,7 +261,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/job.ProgressResponse"
+                            "$ref": "#/definitions/internal_job.ProgressResponse"
                         }
                     }
                 }
@@ -291,7 +291,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.JobResult"
+                                "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.JobResult"
                             }
                         }
                     }
@@ -300,48 +300,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "job.MockResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "example": "Endpoint hit successfully"
-                }
-            }
-        },
-        "job.ProgressResponse": {
-            "type": "object",
-            "properties": {
-                "end_time": {
-                    "type": "string"
-                },
-                "error_count": {
-                    "type": "integer"
-                },
-                "percent_complete": {
-                    "type": "number"
-                },
-                "processed_records": {
-                    "type": "integer"
-                },
-                "records_per_second": {
-                    "type": "number"
-                },
-                "stage_latencies": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "start_time": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.AggregationDef": {
+        "github_com_narayan-mindfire_data-processor_backend_internal_models.AggregationDef": {
             "type": "object",
             "properties": {
                 "field": {
@@ -359,7 +318,7 @@ const docTemplate = `{
                 }
             }
         },
-        "models.ConcurrencyOptions": {
+        "github_com_narayan-mindfire_data-processor_backend_internal_models.ConcurrencyOptions": {
             "type": "object",
             "properties": {
                 "transform_workers": {
@@ -372,7 +331,7 @@ const docTemplate = `{
                 }
             }
         },
-        "models.ExportTarget": {
+        "github_com_narayan-mindfire_data-processor_backend_internal_models.ExportTarget": {
             "type": "object",
             "properties": {
                 "target": {
@@ -386,11 +345,11 @@ const docTemplate = `{
                 }
             }
         },
-        "models.Job": {
+        "github_com_narayan-mindfire_data-processor_backend_internal_models.Job": {
             "type": "object",
             "properties": {
                 "config": {
-                    "$ref": "#/definitions/models.JobConfig"
+                    "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.JobConfig"
                 },
                 "created_at": {
                     "type": "string"
@@ -419,45 +378,45 @@ const docTemplate = `{
                 }
             }
         },
-        "models.JobConfig": {
+        "github_com_narayan-mindfire_data-processor_backend_internal_models.JobConfig": {
             "type": "object",
             "properties": {
                 "aggregations": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.AggregationDef"
+                        "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.AggregationDef"
                     }
                 },
                 "concurrency": {
-                    "$ref": "#/definitions/models.ConcurrencyOptions"
+                    "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.ConcurrencyOptions"
                 },
                 "export_targets": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.ExportTarget"
+                        "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.ExportTarget"
                     }
                 },
                 "sources": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.SourceDef"
+                        "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.SourceDef"
                     }
                 },
                 "transformations": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.TransformationRule"
+                        "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.TransformationRule"
                     }
                 },
                 "validations": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.ValidationRule"
+                        "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.ValidationRule"
                     }
                 }
             }
         },
-        "models.JobError": {
+        "github_com_narayan-mindfire_data-processor_backend_internal_models.JobError": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -480,7 +439,7 @@ const docTemplate = `{
                 }
             }
         },
-        "models.JobResult": {
+        "github_com_narayan-mindfire_data-processor_backend_internal_models.JobResult": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -497,7 +456,7 @@ const docTemplate = `{
                 }
             }
         },
-        "models.SourceDef": {
+        "github_com_narayan-mindfire_data-processor_backend_internal_models.SourceDef": {
             "type": "object",
             "properties": {
                 "json_array_path": {
@@ -514,7 +473,7 @@ const docTemplate = `{
                 }
             }
         },
-        "models.TransformationRule": {
+        "github_com_narayan-mindfire_data-processor_backend_internal_models.TransformationRule": {
             "type": "object",
             "properties": {
                 "action": {
@@ -536,7 +495,7 @@ const docTemplate = `{
                 }
             }
         },
-        "models.ValidationRule": {
+        "github_com_narayan-mindfire_data-processor_backend_internal_models.ValidationRule": {
             "type": "object",
             "properties": {
                 "field": {
@@ -555,6 +514,47 @@ const docTemplate = `{
                     "description": "\"not_empty\", \"is_numeric\", \"range\"",
                     "type": "string",
                     "example": "not_empty"
+                }
+            }
+        },
+        "internal_job.MockResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "example": "Endpoint hit successfully"
+                }
+            }
+        },
+        "internal_job.ProgressResponse": {
+            "type": "object",
+            "properties": {
+                "end_time": {
+                    "type": "string"
+                },
+                "error_count": {
+                    "type": "integer"
+                },
+                "percent_complete": {
+                    "type": "number"
+                },
+                "processed_records": {
+                    "type": "integer"
+                },
+                "records_per_second": {
+                    "type": "number"
+                },
+                "stage_latencies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
                 }
             }
         }

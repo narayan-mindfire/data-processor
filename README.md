@@ -10,14 +10,14 @@ A high-performance, concurrent data ingestion and processing pipeline built in G
 - **Real-Time Metrics:** Advanced observability tracking atomic microsecond `stage_latencies` and dynamic `records_per_second` processing rates.
 - **API Security:** Built-in middleware chain enforcing dynamic multi-origin CORS, Strict-Transport-Security (HSTS), XSS protection, and Clickjacking prevention headers.
 - **PostgreSQL Database:** Schema versioning with `golang-migrate` and embedded SQL migrations auto-applied on startup.
-- **Graceful Shutdown:** Signal-aware server (`SIGINT`/`SIGTERM`) with a 30-second drain window to protect in-flight pipeline jobs.
+- **Graceful Shutdown:** Signal-aware server (`SIGINT`/`SIGTERM`) with a 30-second drain window to protect in-flight pipeline jobs
 - **Pure Docker Tooling:** Run tests, linting, Swagger generation, and the full stack without installing Go locally.
 
 ## Technology Stack
 
 | Layer | Technology |
 |---|---|
-| Language | Go 1.23 |
+| Language | Go 1.24 |
 | HTTP Router | `net/http` (stdlib, Go 1.22+ path params) |
 | Database | PostgreSQL 16 |
 | Migrations | `golang-migrate/migrate` (embedded via `go:embed`) |
@@ -70,29 +70,25 @@ main.go → server.RegisterRoutes(svc)
 ## Project Layout
 
 ```
-backend/
-├── cmd/api/                  Application entry point and config
-│   └── main.go
-├── internal/                 Private application code (Go import boundary)
-│   ├── job/                  Domain package — handler, service, repository co-located
-│   │   ├── handler.go        HTTP handlers + JobService interface (consumer-defined)
-│   │   ├── service.go        Business logic + JobRepository interface (consumer-defined)
-│   │   └── repository.go     PostgreSQL implementation of JobRepository
-│   ├── server/               HTTP wiring
-│   │   └── routes.go         Route registration, Swagger mount
-│   ├── models/               Shared domain types
-│   │   └── job.go            Job, JobError, JobResult structs + status constants
-│   ├── pipeline/             Concurrent processing engine
-│   └── store/                Database connection and migrations
-│       ├── db.go             Connection pool setup + auto-migration
-│       └── migrations/       Embedded SQL migration files
-├── pkg/                      Reusable, importable packages
-│   ├── apperrors/            Sentinel errors + AppError struct
-│   └── logger/               Structured JSON logger factory
-├── docs/                     Auto-generated Swagger documentation
-├── Dockerfile                Multi-stage production build
-├── .golangci.yml             Linter configuration
-└── go.mod / go.sum
+.
+├── backend/                  Go API and Data processing engine
+│   ├── cmd/api/              Application entry point and config
+│   │   └── main.go
+│   ├── internal/             Private application code (Go import boundary)
+│   │   ├── job/              Domain package — handler, service, repository co-located
+│   │   ├── server/           HTTP wiring and route registration
+│   │   ├── models/           Shared domain types
+│   │   └── store/            Database connection and migrations
+│   ├── pkg/                  Reusable, importable packages
+│   ├── docs/                 Auto-generated Swagger documentation
+│   ├── Dockerfile            Multi-stage production build
+│   ├── .golangci.yml         Linter configuration
+│   └── go.mod / go.sum
+├── frontend/                 Vite web application
+├── .githooks/                Git pre-commit hooks for quality gates
+├── docker-compose.yml        Local development stack
+├── Makefile                  Tooling and Docker command abstractions
+└── README.md
 ```
 
 > This layout follows the [golang-standards/project-layout](https://github.com/golang-standards/project-layout) convention and uses **domain-driven packaging** — each feature area (`job/`) co-locates its handler, service, and repository rather than grouping by technical layer.
