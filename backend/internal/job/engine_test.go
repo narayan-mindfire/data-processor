@@ -55,6 +55,9 @@ func (m *MockJobRepository) GetJobResults(ctx context.Context, jobID string) ([]
 func (m *MockJobRepository) InsertExportedRecord(ctx context.Context, jobID string, sourceURL string, data map[string]any) error {
 	return nil
 }
+func (m *MockJobRepository) InsertExportedRecordsBulk(ctx context.Context, jobID string, records []*PipelineRecord) error {
+	return nil
+}
 func (m *MockJobRepository) GetExportedRecordsBySource(ctx context.Context, jobID string, sourceURL string) (*sql.Rows, error) {
 	return nil, nil
 }
