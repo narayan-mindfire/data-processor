@@ -1,10 +1,10 @@
 import { apiClient } from './client';
-import type { Job, JobConfig, ProgressResponse, ExportResponse } from '../types/models';
+import type { Job, JobConfig, ProgressResponse, ExportResponse, PaginatedJobsResponse } from '../types/models';
 
 export const jobService = {
-  listJobs: async (): Promise<Job[]> => {
-    const { data } = await apiClient.get('/pipelines');
-    return data || [];
+  listJobs: async (limit = 10, offset = 0): Promise<PaginatedJobsResponse> => {
+    const { data } = await apiClient.get(`/pipelines?limit=${limit}&offset=${offset}`);
+    return data;
   },
 
   createJob: async (config: JobConfig): Promise<Job> => {
@@ -30,5 +30,10 @@ export const jobService = {
   getExportURLs: async (id: string, format: 'json' | 'csv'): Promise<ExportResponse> => {
     const { data } = await apiClient.get(`/pipelines/${id}/export/${format}`);
     return data;
+  },
+
+  getJobResults: async (id: string): Promise<any[]> => {
+    const { data } = await apiClient.get(`/pipelines/${id}/results`);
+    return data || [];
   },
 };

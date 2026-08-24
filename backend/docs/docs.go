@@ -24,14 +24,27 @@ const docTemplate = `{
                     "Pipelines"
                 ],
                 "summary": "List all pipeline jobs",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Number of jobs to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 0,
+                        "description": "Number of jobs to skip",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.Job"
-                            }
+                            "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.PaginatedJobsResponse"
                         }
                     }
                 }
@@ -453,6 +466,26 @@ const docTemplate = `{
                 },
                 "summary_json": {
                     "type": "string"
+                }
+            }
+        },
+        "github_com_narayan-mindfire_data-processor_backend_internal_models.PaginatedJobsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.Job"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "offset": {
+                    "type": "integer"
+                },
+                "total_count": {
+                    "type": "integer"
                 }
             }
         },

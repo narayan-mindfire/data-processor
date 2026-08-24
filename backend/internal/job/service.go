@@ -27,7 +27,7 @@ type JobRepository interface {
 	GetDistinctSources(ctx context.Context, jobID string) ([]string, error)
 	DeleteExportedRecords(ctx context.Context, jobID string) error
 	DeleteJob(ctx context.Context, id string) error
-	ListJobs(ctx context.Context) ([]models.Job, error)
+	ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error)
 }
 
 type PipelineService struct {
@@ -124,6 +124,6 @@ func (s *PipelineService) DeleteJob(ctx context.Context, id string) error {
 	return s.repo.DeleteJob(ctx, id)
 }
 
-func (s *PipelineService) ListJobs(ctx context.Context) ([]models.Job, error) {
-	return s.repo.ListJobs(ctx)
+func (s *PipelineService) ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error) {
+	return s.repo.ListJobs(ctx, limit, offset)
 }

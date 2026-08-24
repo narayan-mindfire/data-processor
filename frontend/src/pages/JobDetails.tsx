@@ -17,6 +17,7 @@ export function JobDetails() {
   const jobProgress = id ? progress[id] : null;
 
   const [exportUrls, setExportUrls] = useState<{ json: string[], csv: string[] }>({ json: [], csv: [] });
+  const [jobResults, setJobResults] = useState<any[]>([]);
   const [isLoadingExports, setIsLoadingExports] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
@@ -44,13 +45,15 @@ export function JobDetails() {
       setIsLoadingExports(true);
       Promise.all([
         jobService.getExportURLs(id, 'json').catch(() => ({ status: 'error', urls: [] } as unknown as ExportResponse)),
-        jobService.getExportURLs(id, 'csv').catch(() => ({ status: 'error', urls: [] } as unknown as ExportResponse))
-      ]).then(([jsonRes, csvRes]) => {
+        jobService.getExportURLs(id, 'csv').catch(() => ({ status: 'error', urls: [] } as unknown as ExportResponse)),
+        jobService.getJobResults(id).catch(() => [])
+      ]).then(([jsonRes, csvRes, resultsRes]) => {
         if (mounted) {
           setExportUrls({
             json: jsonRes.urls || [],
             csv: csvRes.urls || []
           });
+          setJobResults(resultsRes);
           setIsLoadingExports(false);
         }
       });
@@ -183,6 +186,23 @@ export function JobDetails() {
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {jobProgress.status === 'COMPLETED' && jobResults.length > 0 && (
+        <Card className="bg-slate-50 dark:bg-card">
+          <CardHeader>
+            <CardTitle>Aggregated Results</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {jobResults.map((result, i) => (
+                <div key={i} className="p-4 bg-slate-900 text-slate-100 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre">
+                  {result.summary_json ? JSON.stringify(JSON.parse(result.summary_json), null, 2) : JSON.stringify(result, null, 2)}
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

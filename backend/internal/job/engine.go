@@ -154,7 +154,7 @@ func (e *PipelineEngine) updateJobStatus(ctx context.Context, status string) err
 func (e *PipelineEngine) aggregate(ctx context.Context) {
 	e.log.Info("Starting Aggregation Fan-In stage", "job_id", e.job.ID)
 
-	results := make(map[string]float64)
+	results := make(map[string]any)
 	counts := make(map[string]int)
 
 	for {
@@ -168,7 +168,11 @@ func (e *PipelineEngine) aggregate(ctx context.Context) {
 				for _, agg := range e.job.Config.Aggregations {
 					if agg.Type == "average" {
 						if counts[agg.OutputName] > 0 {
-							results[agg.OutputName] = results[agg.OutputName] / float64(counts[agg.OutputName])
+							if valAny, exists := results[agg.OutputName]; exists {
+								if v, ok := valAny.(float64); ok {
+									results[agg.OutputName] = v / float64(counts[agg.OutputName])
+								}
+							}
 						}
 					}
 				}
@@ -201,7 +205,12 @@ func (e *PipelineEngine) aggregate(ctx context.Context) {
 				}
 
 				if agg.Type == "count" {
-					results[agg.OutputName]++
+					strVal := fmt.Sprintf("%v", val)
+					if results[agg.OutputName] == nil {
+						results[agg.OutputName] = make(map[string]int)
+					}
+					freqMap := results[agg.OutputName].(map[string]int)
+					freqMap[strVal]++
 					continue
 				}
 
@@ -216,7 +225,12 @@ func (e *PipelineEngine) aggregate(ctx context.Context) {
 				}
 
 				if agg.Type == "sum" || agg.Type == "average" {
-					results[agg.OutputName] += num
+					if results[agg.OutputName] == nil {
+						results[agg.OutputName] = float64(0)
+					}
+					if v, ok := results[agg.OutputName].(float64); ok {
+						results[agg.OutputName] = v + num
+					}
 					counts[agg.OutputName]++
 				}
 			}

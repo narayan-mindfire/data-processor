@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/narayan-mindfire/data-processor/backend/internal/models"
@@ -20,7 +21,7 @@ type JobService interface {
 	GetExportURLs(ctx context.Context, jobID string, format string) ([]string, error)
 	CancelJob(ctx context.Context, id string) error
 	DeleteJob(ctx context.Context, id string) error
-	ListJobs(ctx context.Context) ([]models.Job, error)
+	ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error)
 }
 
 type MockResponse struct {
@@ -123,20 +124,42 @@ func GetJobHandler(svc JobService) http.HandlerFunc {
 // @Summary List all pipeline jobs
 // @Tags Pipelines
 // @Produce json
-// @Success 200 {array} models.Job
+// @Param limit query int false "Number of jobs to return" default(10)
+// @Param offset query int false "Number of jobs to skip" default(0)
+// @Success 200 {object} models.PaginatedJobsResponse
 // @Router /api/v1/pipelines [get]
 func ListJobsHandler(svc JobService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		jobs, err := svc.ListJobs(r.Context())
+		limitStr := r.URL.Query().Get("limit")
+		offsetStr := r.URL.Query().Get("offset")
+
+		limit := 10
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+
+		offset := 0
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+
+		jobs, total, err := svc.ListJobs(r.Context(), limit, offset)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to fetch jobs"})
 			return
 		}
 
+		response := models.PaginatedJobsResponse{
+			Data:       jobs,
+			TotalCount: total,
+			Limit:      limit,
+			Offset:     offset,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(jobs)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 
