@@ -369,7 +369,7 @@ func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef
 		}
 	case map[string]interface{}:
 		if source.JSONArrayPath != "" && source.JSONArrayPath != "$" {
-			if nested, ok := v[source.JSONArrayPath]; ok {
+			if nested, ok := utils.GetNestedField(v, source.JSONArrayPath); ok {
 				if nestedArr, ok := nested.([]interface{}); ok {
 					for _, item := range nestedArr {
 						if m, ok := item.(map[string]interface{}); ok {
