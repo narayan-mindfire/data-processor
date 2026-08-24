@@ -7,7 +7,7 @@ export const jobService = {
     return data || [];
   },
 
-  createJob: async (config: JobConfig): Promise<{ job_id: string; message: string }> => {
+  createJob: async (config: JobConfig): Promise<Job> => {
     const { data } = await apiClient.post('/pipelines', config);
     return data;
   },

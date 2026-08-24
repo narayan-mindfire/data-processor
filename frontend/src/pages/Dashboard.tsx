@@ -51,7 +51,9 @@ export function Dashboard() {
               <CardContent>
                 <div className="text-2xl font-bold">{job.processed_records.toLocaleString()}</div>
                 <p className="text-xs text-muted-foreground mb-4">
-                  Records processed out of {job.total_records.toLocaleString()}
+                  {job.total_records > 0 
+                    ? `Records processed out of ${job.total_records.toLocaleString()}`
+                    : `Total records processed`}
                 </p>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">

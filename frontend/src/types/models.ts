@@ -1,8 +1,9 @@
-export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type JobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
 export interface SourceDef {
   url: string;
-  format?: string;
+  type?: string;
+  json_array_path?: string;
 }
 
 export interface ValidationRule {

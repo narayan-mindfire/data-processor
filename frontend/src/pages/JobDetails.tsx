@@ -25,34 +25,38 @@ export function JobDetails() {
 
     fetchProgress(id);
 
+    const isTerminal = jobProgress?.status === 'COMPLETED' || 
+                       jobProgress?.status === 'FAILED' || 
+                       jobProgress?.status === 'CANCELLED';
+
+    if (isTerminal) return;
+
     const interval = setInterval(() => {
       fetchProgress(id);
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [id, fetchProgress]);
+  }, [id, fetchProgress, jobProgress?.status]);
 
   useEffect(() => {
     let mounted = true;
-    if (jobProgress?.status === 'completed' && id) {
-      if (!exportUrls.json.length && !exportUrls.csv.length && !isLoadingExports) {
-        setIsLoadingExports(true);
-        Promise.all([
-          jobService.getExportURLs(id, 'json').catch(() => ({ status: 'error', urls: [] } as unknown as ExportResponse)),
-          jobService.getExportURLs(id, 'csv').catch(() => ({ status: 'error', urls: [] } as unknown as ExportResponse))
-        ]).then(([jsonRes, csvRes]) => {
-          if (mounted) {
-            setExportUrls({
-              json: jsonRes.urls || [],
-              csv: csvRes.urls || []
-            });
-            setIsLoadingExports(false);
-          }
-        });
-      }
+    if (jobProgress?.status === 'COMPLETED' && id) {
+      setIsLoadingExports(true);
+      Promise.all([
+        jobService.getExportURLs(id, 'json').catch(() => ({ status: 'error', urls: [] } as unknown as ExportResponse)),
+        jobService.getExportURLs(id, 'csv').catch(() => ({ status: 'error', urls: [] } as unknown as ExportResponse))
+      ]).then(([jsonRes, csvRes]) => {
+        if (mounted) {
+          setExportUrls({
+            json: jsonRes.urls || [],
+            csv: csvRes.urls || []
+          });
+          setIsLoadingExports(false);
+        }
+      });
     }
     return () => { mounted = false; };
-  }, [jobProgress?.status, id, exportUrls.json.length, exportUrls.csv.length, isLoadingExports]);
+  }, [jobProgress?.status, id]);
 
   const handleCancel = async () => {
     if (!id) return;
@@ -78,7 +82,7 @@ export function JobDetails() {
     return <div className="p-8 text-center text-muted-foreground animate-pulse">Loading job details...</div>;
   }
 
-  const isRunning = jobProgress.status === 'running' || jobProgress.status === 'pending';
+  const isRunning = jobProgress.status === 'RUNNING' || jobProgress.status === 'PENDING';
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -149,8 +153,8 @@ export function JobDetails() {
         </CardContent>
       </Card>
 
-      {jobProgress.status === 'completed' && (
-        <Card className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-card border-indigo-100 dark:border-indigo-900/50">
+      {jobProgress.status === 'COMPLETED' && (
+        <Card className="bg-linear-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-card border-indigo-100 dark:border-indigo-900/50">
           <CardHeader>
             <CardTitle className="text-indigo-900 dark:text-indigo-100">Exported Results</CardTitle>
           </CardHeader>
