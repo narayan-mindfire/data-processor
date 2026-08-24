@@ -77,7 +77,7 @@ export function Dashboard() {
             </p>
             <div className="flex items-center gap-2">
               <Button 
-                variant="outline" 
+                variant="secondary" 
                 size="sm" 
                 onClick={() => fetchJobs(currentPage - 1)}
                 disabled={currentPage <= 1}
@@ -85,7 +85,7 @@ export function Dashboard() {
                 <ChevronLeft className="h-4 w-4 mr-1" /> Previous
               </Button>
               <Button 
-                variant="outline" 
+                variant="secondary" 
                 size="sm" 
                 onClick={() => fetchJobs(currentPage + 1)}
                 disabled={currentPage >= totalPages}
