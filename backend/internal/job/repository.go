@@ -158,7 +158,12 @@ func (r *PostgresJobRepository) UpdateJobStatus(ctx context.Context, id string, 
 		query = `UPDATE jobs SET status = $2, finished_at = $3 WHERE id = $1`
 		_, err = r.DB.ExecContext(ctx, query, id, status, finishedAt)
 	} else {
-		query = `UPDATE jobs SET status = $2 WHERE id = $1`
+		query := `
+			UPDATE jobs 
+			SET status = $2, finished_at = COALESCE($3, finished_at) 
+			WHERE id = $1 
+			AND status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
+		`
 		_, err = r.DB.ExecContext(ctx, query, id, status)
 	}
 
