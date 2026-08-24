@@ -8,30 +8,32 @@ export interface SourceDef {
 
 export interface ValidationRule {
   field: string;
-  type: string;
-  required: boolean;
+  rule: string;
+  min_value?: number;
+  max_value?: number;
 }
 
 export interface TransformationRule {
   field: string;
-  target_field: string;
-  operation: string;
+  action: string;
+  default_value?: string;
+  fill_with_avg?: boolean;
 }
 
 export interface AggregationDef {
   type: string;
   field: string;
+  output_name: string;
 }
 
 export interface ExportTarget {
   type: string;
-  destination: string;
-  format: string;
+  target?: string;
 }
 
 export interface ConcurrencyOptions {
-  max_workers: number;
-  batch_size: number;
+  validation_workers: number;
+  transform_workers: number;
 }
 
 export interface JobConfig {
