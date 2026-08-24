@@ -111,12 +111,15 @@ cp .env.example .env          # edit DB_PASSWORD for production
 docker compose up --build
 ```
 
-This starts PostgreSQL and the API server. Migrations run automatically on boot.
+This starts PostgreSQL, LocalStack (S3), the Go API server, and the React Frontend. Migrations run automatically on boot.
 
 ### 3. Verify
 
 ```bash
-# Health check
+# Open the Frontend Dashboard UI
+open http://localhost:5173
+
+# API Health check
 curl http://localhost:8080/api/v1/pipelines
 
 # Swagger UI
