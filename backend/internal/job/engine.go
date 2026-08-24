@@ -245,6 +245,8 @@ func (e *PipelineEngine) observabilityTracker(ctx context.Context, wg *sync.Wait
 
 	processed := 0
 	errors := 0
+	lastProcessed := 0
+	lastErrors := 0
 
 	for {
 		select {
@@ -265,11 +267,17 @@ func (e *PipelineEngine) observabilityTracker(ctx context.Context, wg *sync.Wait
 				}
 			}
 		case <-ticker.C:
-			_ = e.repo.UpdateJobProgress(context.Background(), e.job.ID, processed, errors)
+			if processed > lastProcessed || errors > lastErrors {
+				_ = e.repo.UpdateJobProgress(context.Background(), e.job.ID, processed, errors)
+				lastProcessed = processed
+				lastErrors = errors
+			}
 		}
 
 		if e.progressCh == nil && e.errorCh == nil {
-			_ = e.repo.UpdateJobProgress(context.Background(), e.job.ID, processed, errors)
+			if processed > lastProcessed || errors > lastErrors {
+				_ = e.repo.UpdateJobProgress(context.Background(), e.job.ID, processed, errors)
+			}
 			return
 		}
 	}
@@ -532,29 +540,54 @@ func (e *PipelineEngine) exportWorker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	e.log.Info("Starting Export Worker", "job_id", e.job.ID)
 
+	const batchSize = 500
+	var batch []*PipelineRecord
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	flushBatch := func() {
+		if len(batch) > 0 {
+			start := time.Now()
+			if err := e.repo.InsertExportedRecordsBulk(context.Background(), e.job.ID, batch); err != nil {
+				e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Export", ErrorMessage: "Failed to bulk persist records: " + err.Error()}
+			}
+			e.exportLatencyMs.Add(time.Since(start).Microseconds())
+			e.exportCount.Add(int64(len(batch)))
+
+			// Clear the slice but keep the capacity
+			batch = batch[:0]
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			e.log.Info("Export Worker cancelled", "job_id", e.job.ID)
+			flushBatch()
 			return
+		case <-ticker.C:
+			flushBatch()
 		case data, ok := <-e.exportCh:
 			if !ok {
 				e.log.Info("Export Worker finished", "job_id", e.job.ID)
+				flushBatch()
 				return
 			}
-			start := time.Now()
+
 			switch v := data.(type) {
 			case *PipelineRecord:
-				if err := e.repo.InsertExportedRecord(context.Background(), e.job.ID, v.SourceURL, v.Data); err != nil {
-					e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Export", RecordIndex: v.Index, ErrorMessage: "Failed to persist record: " + err.Error()}
+				batch = append(batch, v)
+				if len(batch) >= batchSize {
+					flushBatch()
 				}
 			case *models.JobResult:
+				start := time.Now()
 				if err := e.repo.InsertJobResult(context.Background(), v); err != nil {
 					e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Export", ErrorMessage: "Failed to save final results: " + err.Error()}
 				}
+				e.exportLatencyMs.Add(time.Since(start).Microseconds())
+				e.exportCount.Add(1)
 			}
-			e.exportLatencyMs.Add(time.Since(start).Microseconds())
-			e.exportCount.Add(1)
 		}
 	}
 }

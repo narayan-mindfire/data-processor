@@ -196,6 +196,34 @@ func (r *PostgresJobRepository) InsertExportedRecord(ctx context.Context, jobID 
 	return err
 }
 
+func (r *PostgresJobRepository) InsertExportedRecordsBulk(ctx context.Context, jobID string, records []*PipelineRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+
+	query := `INSERT INTO job_exported_records (job_id, source_url, data) VALUES `
+	args := make([]interface{}, 0, len(records)*3)
+
+	for i, rec := range records {
+		dataBytes, err := json.Marshal(rec.Data)
+		if err != nil {
+			return fmt.Errorf("failed to marshal export data at index %d: %w", i, err)
+		}
+
+		query += fmt.Sprintf("($%d, $%d, $%d),", i*3+1, i*3+2, i*3+3)
+		args = append(args, jobID, rec.SourceURL, string(dataBytes))
+	}
+
+	// Remove trailing comma
+	query = query[:len(query)-1]
+
+	_, err := r.DB.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to bulk insert exported records: %w", err)
+	}
+	return nil
+}
+
 func (r *PostgresJobRepository) GetExportedRecordsBySource(ctx context.Context, jobID string, sourceURL string) (*sql.Rows, error) {
 	query := `SELECT data FROM job_exported_records WHERE job_id = $1 AND source_url = $2 ORDER BY created_at ASC, id ASC`
 	return r.DB.QueryContext(ctx, query, jobID, sourceURL)
@@ -234,7 +262,14 @@ func (r *PostgresJobRepository) DeleteJob(ctx context.Context, id string) error 
 
 func (r *PostgresJobRepository) ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error) {
 	var total int
-	err := r.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&total)
+	// Optimize pagination count for massive tables using PostgreSQL internal statistics
+	countQuery := `
+		SELECT COALESCE(
+			(SELECT reltuples::bigint FROM pg_class WHERE relname = 'jobs' AND reltuples > 1000),
+			(SELECT COUNT(*) FROM jobs)
+		)
+	`
+	err := r.DB.QueryRowContext(ctx, countQuery).Scan(&total)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -23,6 +23,7 @@ type JobRepository interface {
 	GetJobErrors(ctx context.Context, jobID string) ([]models.JobError, error)
 	GetJobResults(ctx context.Context, jobID string) ([]models.JobResult, error)
 	InsertExportedRecord(ctx context.Context, jobID string, sourceURL string, data map[string]any) error
+	InsertExportedRecordsBulk(ctx context.Context, jobID string, records []*PipelineRecord) error
 	GetExportedRecordsBySource(ctx context.Context, jobID string, sourceURL string) (*sql.Rows, error)
 	GetDistinctSources(ctx context.Context, jobID string) ([]string, error)
 	DeleteExportedRecords(ctx context.Context, jobID string) error
