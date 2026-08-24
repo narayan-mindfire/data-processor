@@ -178,7 +178,8 @@ You can paste this exact payload directly into the Swagger UI (`http://localhost
   ],
   "validations": [
     {"field": "Weight(Pounds)", "rule": "not_empty"},
-    {"field": "gender", "rule": "not_empty"},
+    {"field": "name.first", "rule": "not_empty"},
+    {"field": "location.city", "rule": "not_empty"},
     {"field": "current_price", "rule": "not_empty"},
     {"field": "elevation", "rule": "not_empty"}
   ],
@@ -190,7 +191,7 @@ You can paste this exact payload directly into the Swagger UI (`http://localhost
   "aggregations": [
     {"type": "average", "field": "Weight(Pounds)", "output_name": "average_weight"},
     {"type": "count", "field": "id", "output_name": "total_json_posts"},
-    {"type": "count", "field": "gender", "output_name": "total_random_users"},
+    {"type": "count", "field": "location.city", "output_name": "total_cities_processed"},
     {"type": "sum", "field": "current_price", "output_name": "sum_crypto_prices"},
     {"type": "sum", "field": "elevation", "output_name": "total_elevation"}
   ],
