@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/narayan-mindfire/data-processor/backend/internal/models"
+	"github.com/narayan-mindfire/data-processor/backend/internal/utils"
 )
 
 type PipelineRecord struct {
@@ -194,7 +195,7 @@ func (e *PipelineEngine) aggregate(ctx context.Context) {
 			e.exportCh <- record
 
 			for _, agg := range e.job.Config.Aggregations {
-				val, exists := record.Data[agg.Field]
+				val, exists := utils.GetNestedField(record.Data, agg.Field)
 				if !exists || val == nil {
 					continue
 				}
@@ -368,7 +369,7 @@ func (e *PipelineEngine) ingestJSON(ctx context.Context, source models.SourceDef
 		}
 	case map[string]interface{}:
 		if source.JSONArrayPath != "" && source.JSONArrayPath != "$" {
-			if nested, ok := v[source.JSONArrayPath]; ok {
+			if nested, ok := utils.GetNestedField(v, source.JSONArrayPath); ok {
 				if nestedArr, ok := nested.([]interface{}); ok {
 					for _, item := range nestedArr {
 						if m, ok := item.(map[string]interface{}); ok {
@@ -420,7 +421,7 @@ func (e *PipelineEngine) validationWorker(ctx context.Context, wg *sync.WaitGrou
 			start := time.Now()
 			isValid := true
 			for _, rule := range e.job.Config.Validations {
-				val, exists := record.Data[rule.Field]
+				val, exists := utils.GetNestedField(record.Data, rule.Field)
 
 				if !exists || val == nil {
 					if rule.Rule == "not_empty" {
@@ -471,7 +472,7 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 			start := time.Now()
 
 			for _, rule := range e.job.Config.Transformations {
-				val, exists := record.Data[rule.Field]
+				val, exists := utils.GetNestedField(record.Data, rule.Field)
 
 				strVal := ""
 				if exists && val != nil {
@@ -480,7 +481,7 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 
 				if rule.Action == "fill_empty" {
 					if strVal == "" {
-						record.Data[rule.Field] = rule.DefaultValue
+						utils.SetNestedField(record.Data, rule.Field, rule.DefaultValue)
 						strVal = rule.DefaultValue
 					}
 				}
@@ -488,7 +489,7 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 				if rule.Action == "convert_to_int" {
 					if strVal != "" {
 						if intVal, err := strconv.Atoi(strVal); err == nil {
-							record.Data[rule.Field] = intVal
+							utils.SetNestedField(record.Data, rule.Field, intVal)
 						} else {
 							e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Transformation", RecordIndex: record.Index, ErrorMessage: fmt.Sprintf("Failed to convert %s to int", rule.Field)}
 						}
@@ -498,7 +499,7 @@ func (e *PipelineEngine) transformationWorker(ctx context.Context, wg *sync.Wait
 				if rule.Action == "convert_to_float" {
 					if strVal != "" {
 						if floatVal, err := strconv.ParseFloat(strVal, 64); err == nil {
-							record.Data[rule.Field] = floatVal
+							utils.SetNestedField(record.Data, rule.Field, floatVal)
 						} else {
 							e.errorCh <- &models.JobError{JobID: e.job.ID, Stage: "Transformation", RecordIndex: record.Index, ErrorMessage: fmt.Sprintf("Failed to convert %s to float", rule.Field)}
 						}
