@@ -105,6 +105,19 @@ definitions:
       summary_json:
         type: string
     type: object
+  github_com_narayan-mindfire_data-processor_backend_internal_models.PaginatedJobsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.Job'
+        type: array
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total_count:
+        type: integer
+    type: object
   github_com_narayan-mindfire_data-processor_backend_internal_models.SourceDef:
     properties:
       json_array_path:
@@ -185,15 +198,24 @@ info:
 paths:
   /api/v1/pipelines:
     get:
+      parameters:
+      - default: 10
+        description: Number of jobs to return
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Number of jobs to skip
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.Job'
-            type: array
+            $ref: '#/definitions/github_com_narayan-mindfire_data-processor_backend_internal_models.PaginatedJobsResponse'
       summary: List all pipeline jobs
       tags:
       - Pipelines

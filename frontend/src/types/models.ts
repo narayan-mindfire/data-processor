@@ -58,6 +58,13 @@ export interface Job {
   finished_at?: string;
 }
 
+export interface PaginatedJobsResponse {
+  data: Job[];
+  total_count: number;
+  limit: number;
+  offset: number;
+}
+
 export interface ProgressResponse {
   status: JobStatus;
   percent_complete: number;

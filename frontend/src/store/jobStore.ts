@@ -4,19 +4,25 @@ import { jobService } from '../api/jobs';
 
 interface JobState {
   jobs: Record<string, Job>;
+  totalJobs: number;
+  currentPage: number;
+  pageSize: number;
   activeJobId: string | null;
   progress: Record<string, ProgressResponse>;
   isLoading: boolean;
   error: string | null;
 
   setActiveJob: (id: string | null) => void;
-  fetchJobs: () => Promise<void>;
+  fetchJobs: (page?: number) => Promise<void>;
   fetchProgress: (id: string) => Promise<void>;
   addJob: (id: string, initialProgress: ProgressResponse) => void;
 }
 
-export const useJobStore = create<JobState>((set) => ({
+export const useJobStore = create<JobState>((set, get) => ({
   jobs: {},
+  totalJobs: 0,
+  currentPage: 1,
+  pageSize: 9,
   activeJobId: null,
   progress: {},
   isLoading: false,
@@ -24,15 +30,30 @@ export const useJobStore = create<JobState>((set) => ({
 
   setActiveJob: (id) => set({ activeJobId: id }),
 
-  fetchJobs: async () => {
+  fetchJobs: async (page) => {
     set({ isLoading: true });
     try {
-      const data = await jobService.listJobs();
+      const state = get();
+      const targetPage = page ?? state.currentPage;
+      const limit = state.pageSize;
+      const offset = (targetPage - 1) * limit;
+
+      const response = await jobService.listJobs(limit, offset);
+      
       const jobsMap: Record<string, Job> = {};
-      data.forEach((job) => {
-        jobsMap[job.id] = job;
+      if (response.data) {
+        response.data.forEach((job) => {
+          jobsMap[job.id] = job;
+        });
+      }
+      
+      set({ 
+        jobs: jobsMap, 
+        totalJobs: response.total_count || 0,
+        currentPage: targetPage,
+        isLoading: false, 
+        error: null 
       });
-      set({ jobs: jobsMap, isLoading: false, error: null });
     } catch (err: any) {
       console.error('Failed to fetch jobs', err);
       set({ isLoading: false, error: err.message });

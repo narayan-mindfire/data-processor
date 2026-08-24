@@ -15,6 +15,13 @@ type ExportTarget struct {
 	Target string `json:"target,omitempty" example:"job_exported_records"`
 }
 
+type PaginatedJobsResponse struct {
+	Data       []Job `json:"data"`
+	TotalCount int   `json:"total_count"`
+	Limit      int   `json:"limit"`
+	Offset     int   `json:"offset"`
+}
+
 type SourceDef struct {
 	Type          string `json:"type" example:"json"`
 	URL           string `json:"url" example:"https://randomuser.me/api/?results=10"`

@@ -65,8 +65,10 @@ func (m *MockJobRepository) DeleteExportedRecords(ctx context.Context, jobID str
 	return nil
 }
 
-func (m *MockJobRepository) DeleteJob(ctx context.Context, id string) error     { return nil }
-func (m *MockJobRepository) ListJobs(ctx context.Context) ([]models.Job, error) { return nil, nil }
+func (m *MockJobRepository) DeleteJob(ctx context.Context, id string) error { return nil }
+func (m *MockJobRepository) ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error) {
+	return nil, 0, nil
+}
 
 func TestEngine_ValidationAndTransformation(t *testing.T) {
 	job := &models.Job{

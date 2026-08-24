@@ -34,7 +34,7 @@ func TestPipelineService_ListJobs(t *testing.T) {
 	svc := NewPipelineService(repo, nil, slog.Default())
 
 	// Safe pass-through check
-	_, err := svc.ListJobs(context.Background())
+	_, _, err := svc.ListJobs(context.Background(), 10, 0)
 	if err != nil {
 		t.Errorf("Unexpected error listing jobs: %v", err)
 	}

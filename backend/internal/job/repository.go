@@ -227,15 +227,22 @@ func (r *PostgresJobRepository) DeleteJob(ctx context.Context, id string) error 
 	return err
 }
 
-func (r *PostgresJobRepository) ListJobs(ctx context.Context) ([]models.Job, error) {
+func (r *PostgresJobRepository) ListJobs(ctx context.Context, limit, offset int) ([]models.Job, int, error) {
+	var total int
+	err := r.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	query := `
 		SELECT id, config, status, total_records, processed_records, error_count, created_at, finished_at, metrics 
 		FROM jobs 
 		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
 	`
-	rows, err := r.DB.QueryContext(ctx, query)
+	rows, err := r.DB.QueryContext(ctx, query, limit, offset)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -257,7 +264,7 @@ func (r *PostgresJobRepository) ListJobs(ctx context.Context) ([]models.Job, err
 			&finishedAt,
 			&metricsBytes,
 		); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		if err := json.Unmarshal(configBytes, &job.Config); err != nil {
@@ -275,5 +282,5 @@ func (r *PostgresJobRepository) ListJobs(ctx context.Context) ([]models.Job, err
 	if jobs == nil {
 		jobs = []models.Job{}
 	}
-	return jobs, nil
+	return jobs, total, nil
 }
