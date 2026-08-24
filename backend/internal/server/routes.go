@@ -26,6 +26,7 @@ func RegisterRoutes(svc job.JobService, allowedOrigins []string) http.Handler {
 	mux.HandleFunc("DELETE /api/v1/pipelines/{id}", job.DeleteJobHandler(svc))
 
 	var handler http.Handler = mux
+	handler = RateLimiterMiddleware(handler)
 	handler = CORSMiddleware(handler, allowedOrigins)
 	handler = SecurityMiddleware(handler)
 	handler = LoggerMiddleware(handler)
